@@ -1,5 +1,8 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 
+// Default encryption key (64 hex chars = 32 bytes)
+const DEFAULT_ENCRYPTION_KEY = 'a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456';
+
 /**
  * AES-256-GCM encryption service for sensitive data.
  * Used for encrypting message contents before database storage.
@@ -15,12 +18,12 @@ export class EncryptionService {
   private readonly ivLength = 12; // 96 bits recommended for GCM
   private readonly authTagLength = 16; // 128 bits
   private readonly key: Buffer;
+  private readonly enabled: boolean;
 
-  constructor(hexKey: string) {
-    if (!hexKey || hexKey.length !== 64) {
-      throw new Error('Encryption key must be 64 hex characters (32 bytes)');
-    }
-    this.key = Buffer.from(hexKey, 'hex');
+  constructor(hexKey?: string) {
+    const keyToUse = hexKey && hexKey.length === 64 ? hexKey : DEFAULT_ENCRYPTION_KEY;
+    this.key = Buffer.from(keyToUse, 'hex');
+    this.enabled = true;
   }
 
   /**
