@@ -19,6 +19,39 @@ import {
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
+        const databaseUrl = process.env.DATABASE_URL;
+        
+        // If DATABASE_URL is provided (Render), use it directly
+        if (databaseUrl) {
+          return {
+            type: 'postgres' as const,
+            url: databaseUrl,
+            ssl: {
+              rejectUnauthorized: false, // Required for Render
+            },
+            entities: [
+              User,
+              Contact,
+              NewsPost,
+              MediaAsset,
+              Conversation,
+              Message,
+              AuditLog,
+              Broadcast,
+              BotSession,
+            ],
+            synchronize: true, // Auto-sync schema on Render
+            logging: false,
+            extra: {
+              max: 10,
+              min: 2,
+              idleTimeoutMillis: 30000,
+              connectionTimeoutMillis: 5000,
+            },
+          };
+        }
+        
+        // Local development - use individual config values
         return {
           type: 'postgres' as const,
           host: configService.get<string>('database.host')!,
@@ -40,10 +73,9 @@ import {
           ],
           synchronize: configService.get<boolean>('database.synchronize'),
           logging: configService.get<boolean>('database.logging'),
-          // Connection pool settings
           extra: {
-            max: 20, // Maximum connections
-            min: 5, // Minimum connections
+            max: 20,
+            min: 5,
             idleTimeoutMillis: 30000,
             connectionTimeoutMillis: 5000,
           },

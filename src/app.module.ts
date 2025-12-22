@@ -79,17 +79,42 @@ import { AdminModule } from './modules/admin';
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        redis: {
-          host: config.get('redis.host'),
-          port: config.get('redis.port'),
-          password: config.get('redis.password') || undefined,
-        },
-        defaultJobOptions: {
-          removeOnComplete: true,
-          removeOnFail: false,
-        },
-      }),
+      useFactory: (config: ConfigService) => {
+        const redisUrl = process.env.REDIS_URL;
+        
+        // If REDIS_URL is provided (Render), parse and use it
+        if (redisUrl) {
+          try {
+            const url = new URL(redisUrl);
+            return {
+              redis: {
+                host: url.hostname,
+                port: parseInt(url.port) || 6379,
+                password: url.password || undefined,
+              },
+              defaultJobOptions: {
+                removeOnComplete: true,
+                removeOnFail: false,
+              },
+            };
+          } catch {
+            console.log('Invalid REDIS_URL, falling back to individual config');
+          }
+        }
+        
+        // Local development - use individual config values
+        return {
+          redis: {
+            host: config.get('redis.host'),
+            port: config.get('redis.port'),
+            password: config.get('redis.password') || undefined,
+          },
+          defaultJobOptions: {
+            removeOnComplete: true,
+            removeOnFail: false,
+          },
+        };
+      },
     }),
 
     // Database
