@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import Link from "next/link"
 import { useApp } from "@/lib/store"
 import { AppLayout } from "@/components/layout/app-layout"
@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { contactsMock } from "@/lib/mock-data"
+import { contactsApi } from "@/lib/api"
 import { Search, Users, MessageCircle, ExternalLink, User } from "lucide-react"
 import { hapticFeedback } from "@/lib/telegram"
 
@@ -18,18 +18,35 @@ const BOT_USERNAME = "TSDI_bot"
 export default function ContactsPage() {
   const { locale, t } = useApp()
   const [searchQuery, setSearchQuery] = useState("")
+  const [contacts, setContacts] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLoading(true)
+    contactsApi.getAll()
+      .then((res) => {
+        if (res.success && Array.isArray(res.data)) {
+          setContacts(res.data)
+        } else {
+          setError(res.error || t.contacts.noContacts)
+        }
+      })
+      .catch(() => setError("API error"))
+      .finally(() => setLoading(false))
+  }, [])
 
   const filteredContacts = useMemo(() => {
-    return contactsMock.filter((contact) => {
+    return contacts.filter((contact) => {
       if (contact.status !== "active") return false
       const searchLower = searchQuery.toLowerCase()
       return (
         contact.fullName.toLowerCase().includes(searchLower) ||
-        contact.position[locale].toLowerCase().includes(searchLower) ||
-        contact.department[locale].toLowerCase().includes(searchLower)
+        contact.position[locale]?.toLowerCase().includes(searchLower) ||
+        contact.department[locale]?.toLowerCase().includes(searchLower)
       )
     })
-  }, [searchQuery, locale])
+  }, [searchQuery, locale, contacts])
 
   const handleWriteInBot = (contactId: string) => {
     hapticFeedback("light")
@@ -55,9 +72,12 @@ export default function ContactsPage() {
             className="pl-10 h-10 text-sm bg-gradient-to-r from-card/60 to-card/40 backdrop-blur-md border-border/40 rounded-xl focus:ring-2 focus:ring-primary/30 transition-all"
           />
         </div>
-
-        {/* Contacts List */}
-        {filteredContacts.length === 0 ? (
+        {/* Loading/Error/Empty/Contacts List State */}
+        {loading ? (
+          <div className="py-10 text-center text-muted-foreground">{t.common.loading}</div>
+        ) : error ? (
+          <div className="py-10 text-center text-destructive">{error}</div>
+        ) : filteredContacts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <Users className="h-10 w-10 text-muted-foreground/40 mb-3" />
             <p className="text-xs text-muted-foreground">{t.contacts.noContacts}</p>
@@ -82,7 +102,6 @@ export default function ContactsPage() {
                         </div>
                       )}
                     </div>
-
                     {/* Info */}
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-[13px] text-foreground line-clamp-1">{contact.fullName}</h3>
@@ -92,9 +111,7 @@ export default function ContactsPage() {
                       </Badge>
                     </div>
                   </div>
-
                   <p className="text-[11px] text-muted-foreground mt-2 line-clamp-2">{contact.description[locale]}</p>
-
                   {/* Actions - Premium Kreativ Separated Buttons */}
                   <div className="flex gap-3 mt-3">
                     <Button

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import Link from "next/link"
 import { useApp } from "@/lib/store"
 import { AppLayout } from "@/components/layout/app-layout"
@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { newsMock, type NewsItem } from "@/lib/mock-data"
+import { newsApi } from "@/lib/api"
 import { Search, ImageIcon, Video, Music, FileText, Newspaper } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { cn } from "@/lib/utils"
@@ -27,6 +27,9 @@ export default function NewsPage() {
   const { locale, t, isAdmin } = useApp()
   const [searchQuery, setSearchQuery] = useState("")
   const [activeFilter, setActiveFilter] = useState<MediaFilter>("all")
+  const [news, setNews] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const filters: { key: MediaFilter; label: string; icon?: typeof ImageIcon }[] = [
     { key: "all", label: t.common.all },
@@ -35,15 +38,29 @@ export default function NewsPage() {
     { key: "audio", label: t.news.audio, icon: Music },
   ]
 
+  useEffect(() => {
+    setLoading(true)
+    newsApi.getAll()
+      .then((res) => {
+        if (res.success && Array.isArray(res.data)) {
+          setNews(res.data)
+        } else {
+          setError(res.error || t.news.noNews)
+        }
+      })
+      .catch(() => setError("API error"))
+      .finally(() => setLoading(false))
+  }, [])
+
   const filteredNews = useMemo(() => {
-    return newsMock.filter((news) => {
+    return news.filter((news) => {
       const matchesSearch =
-        news.title[locale].toLowerCase().includes(searchQuery.toLowerCase()) ||
-        news.excerpt[locale].toLowerCase().includes(searchQuery.toLowerCase())
+        news.title[locale]?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        news.excerpt?.[locale]?.toLowerCase().includes(searchQuery.toLowerCase())
       const matchesFilter = activeFilter === "all" || news.mediaType === activeFilter
       return matchesSearch && matchesFilter
     })
-  }, [searchQuery, activeFilter, locale])
+  }, [searchQuery, activeFilter, locale, news])
 
   return (
     <AppLayout title={t.news.title}>
@@ -58,6 +75,12 @@ export default function NewsPage() {
             className="pl-10 h-10 text-sm bg-gradient-to-r from-card/60 to-card/40 backdrop-blur-md border-border/40 rounded-xl focus:ring-2 focus:ring-primary/30 transition-all"
           />
         </div>
+        {/* Loading/Error State */}
+        {loading ? (
+          <div className="py-10 text-center text-muted-foreground">{t.common.loading}</div>
+        ) : error ? (
+          <div className="py-10 text-center text-destructive">{error}</div>
+        ) : null}
 
         {/* Filter Pills - Ajratilgan Tugmalar */}
         <div className="flex gap-[10px] overflow-x-auto pb-3 -mx-3 px-3 scrollbar-none">
