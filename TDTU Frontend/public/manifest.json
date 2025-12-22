@@ -1,0 +1,24 @@
+{
+  "name": "TDSU - Toshkent Davlat Stomatologiya Universiteti",
+  "short_name": "TDSU",
+  "description": "Toshkent Davlat Stomatologiya universiteti rasmiy Telegram mini ilovasi",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0d9488",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/images/image.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/images/image.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "lang": "uz",
+  "categories": ["education", "medical"]
+}
