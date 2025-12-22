@@ -14,7 +14,16 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { MediaService, MediaUploadResult } from './media.service';
 import { JwtAuthGuard, AdminGuard } from '../../common/guards';
-import { Multer } from 'multer';
+
+// Define file interface for multer
+interface UploadedFileType {
+  fieldname: string;
+  originalname: string;
+  encoding: string;
+  mimetype: string;
+  size: number;
+  buffer: Buffer;
+}
 
 /**
  * Admin media controller.
@@ -35,7 +44,7 @@ export class MediaController {
   @Post()
   @UseInterceptors(FileInterceptor('file'))
   async upload(
-    @UploadedFile() file: Multer.File,
+    @UploadedFile() file: UploadedFileType,
   ): Promise<MediaUploadResult> {
     if (!file) {
       throw new BadRequestException('No file provided');

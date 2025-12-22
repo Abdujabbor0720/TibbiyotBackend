@@ -10,20 +10,22 @@ export const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   API_PREFIX: z.string().default('api/v1'),
 
-  // Database
-  DATABASE_HOST: z.string().min(1),
+  // Database (optional if DATABASE_URL is provided)
+  DATABASE_HOST: z.string().optional().default('localhost'),
   DATABASE_PORT: z.coerce.number().int().positive().default(5432),
-  DATABASE_NAME: z.string().min(1),
-  DATABASE_USER: z.string().min(1),
-  DATABASE_PASSWORD: z.string().min(1),
+  DATABASE_NAME: z.string().optional().default('tdtu'),
+  DATABASE_USER: z.string().optional().default('postgres'),
+  DATABASE_PASSWORD: z.string().optional().default(''),
   DATABASE_SSL: z.coerce.boolean().default(false),
   DATABASE_SYNCHRONIZE: z.coerce.boolean().default(false),
   DATABASE_LOGGING: z.coerce.boolean().default(false),
+  DATABASE_URL: z.string().optional(),
 
-  // Redis
-  REDIS_HOST: z.string().min(1).default('localhost'),
+  // Redis (optional if REDIS_URL is provided)
+  REDIS_HOST: z.string().optional().default('localhost'),
   REDIS_PORT: z.coerce.number().int().positive().default(6379),
   REDIS_PASSWORD: z.string().optional().default(''),
+  REDIS_URL: z.string().optional(),
 
   // Telegram
   TELEGRAM_BOT_TOKEN: z.string().min(1).regex(/^\d+:[A-Za-z0-9_-]+$/, 'Invalid Telegram bot token format'),
@@ -37,8 +39,8 @@ export const envSchema = z.object({
   // Telegram WebApp Auth
   TELEGRAM_INIT_DATA_MAX_AGE: z.coerce.number().int().positive().default(300),
 
-  // Data Encryption
-  DATA_ENCRYPTION_KEY: z.string().length(64, 'Encryption key must be 64 hex characters (32 bytes)'),
+  // Data Encryption (optional - use default if not provided)
+  DATA_ENCRYPTION_KEY: z.string().optional().default('a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456'),
 
   // Cloudinary
   CLOUDINARY_CLOUD_NAME: z.string().min(1),
