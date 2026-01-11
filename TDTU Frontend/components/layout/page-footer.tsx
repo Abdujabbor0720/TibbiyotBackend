@@ -71,16 +71,16 @@ export function PageFooter() {
 
   return (
     <footer className="mt-auto border-t border-border/20 bg-gradient-to-b from-background/50 to-background/80 backdrop-blur-2xl pt-5 pb-24">
-      <div className="container max-w-lg mx-auto px-4 space-y-4">
+      <div className="container max-w-md mx-auto px-4 space-y-4">
         {/* University Header with Logo - Professional Full Circle */}
         <div className="flex items-center gap-4">
           <div className="relative h-14 w-14 overflow-hidden rounded-full shadow-xl ring-[3px] ring-blue-500/80 hover:ring-blue-600 transition-all duration-500 bg-white">
             <Image 
-              src="/images/image.png" 
-              alt="TSDI Logo" 
+              src="/images/logo.png" 
+              alt="TDTU Logo" 
               fill 
-              className="object-contain p-0.5" 
-              priority 
+              sizes="56px"
+              className="object-cover"
             />
           </div>
           <div className="space-y-0.5">
@@ -160,7 +160,7 @@ export function PageFooter() {
           <Card className="overflow-hidden shadow-lg border-border/30 bg-background/40 backdrop-blur-md rounded-2xl">
             <div className="relative h-28 w-full">
               <iframe
-                src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2996.8!2d69.279737!3d41.311081!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x38ae8b534abacc89%3A0x8d8e8f5c2f2c8f5c!2sTashkent%20State%20Dental%20Institute!5e0!3m2!1sen!2s!4v1703123456789"
+                src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2996.5!2d69.279167!3d41.311389!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x38ae8b5f1d9f6e9d%3A0x1c3c5c6b7a8e9f0d!2sTashkent%20State%20Dental%20Institute!5e0!3m2!1sen!2s!4v1703123456789"
                 width="100%"
                 height="100%"
                 style={{ border: 0 }}

@@ -5,7 +5,7 @@ import { AuditLog } from '../../database/entities';
 import { AuditAction, AuditEntityType } from '../../database/enums';
 
 export interface AuditLogData {
-  actorUserId: string;
+  actorUserId: string | null;
   action: AuditAction;
   entityType: AuditEntityType;
   entityId?: string | null;

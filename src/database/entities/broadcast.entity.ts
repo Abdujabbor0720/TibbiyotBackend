@@ -22,8 +22,8 @@ export class Broadcast {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'uuid' })
-  createdByUserId: string;
+  @Column({ type: 'uuid', nullable: true })
+  createdByUserId: string | null;
 
   @Column({
     type: 'enum',
@@ -61,6 +61,12 @@ export class Broadcast {
    */
   @Column({ type: 'text', nullable: true })
   errorMessage: string | null;
+
+  /**
+   * Media URLs for broadcast (Cloudinary URLs).
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  mediaUrls: string[] | null;
 
   @Column({ type: 'timestamptz', nullable: true })
   startedAt: Date | null;

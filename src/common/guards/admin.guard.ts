@@ -3,6 +3,7 @@ import {
   CanActivate,
   ExecutionContext,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { UserRole } from '../../database/enums';
 
@@ -11,23 +12,34 @@ import { UserRole } from '../../database/enums';
  * Must be used after JwtAuthGuard.
  * 
  * SECURITY NOTES:
- * - Only one admin is allowed in the system (defined in .env as ADMIN_TELEGRAM_ID)
+ * - Only users with ADMIN role in the database are allowed
+ * - Admin status is set based on ADMIN_TELEGRAM_IDS environment variable
  * - Never trust client-provided isAdmin; always verify server-side
- * - Role is determined from the JWT payload which is set during authentication
- * - The JWT payload's role comes from the database, not from client
+ * - Role is determined from the JWT payload which comes from database
+ * - Logs all admin access attempts for security audit
  */
 @Injectable()
 export class AdminGuard implements CanActivate {
+  private readonly logger = new Logger(AdminGuard.name);
+
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();
     const user = request.user;
 
     if (!user) {
+      this.logger.warn('Admin access attempted without authentication');
       throw new ForbiddenException('User not authenticated');
     }
 
-    // Only ADMIN role is allowed (single admin system)
-    if (user.role !== UserRole.ADMIN) {
+    // Validate user object structure
+    if (!user.sub || !user.role) {
+      this.logger.warn('Admin access attempted with invalid user payload');
+      throw new ForbiddenException('Invalid user payload');
+    }
+
+    // Only ADMIN role is allowed
+    if (user.role !== UserRole.ADMIN && user.role !== 'admin') {
+      this.logger.warn(`Admin access denied for user ${user.sub} with role ${user.role}`);
       throw new ForbiddenException('Admin access required');
     }
 

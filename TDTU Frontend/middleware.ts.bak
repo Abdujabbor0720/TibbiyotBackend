@@ -1,3 +1,15 @@
+// MIDDLEWARE VAQTINCHA O'CHIRILGAN - Production uchun kerak bo'lishi mumkin
+// Next.js 15+ da "middleware" eskirgan, "proxy" ishlatish tavsiya etiladi
+// Hozircha localhost test uchun bu kerak emas
+
+// Agar production da ngrok yoki boshqa proxy ishlatilsa, 
+// next.config.mjs da rewrites/headers orqali sozlash mumkin
+
+export {}
+
+/*
+// ESKI MIDDLEWARE KODI - Kerak bo'lganda qayta yoqish mumkin:
+
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
@@ -15,3 +27,4 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: '/:path*',
 }
+*/

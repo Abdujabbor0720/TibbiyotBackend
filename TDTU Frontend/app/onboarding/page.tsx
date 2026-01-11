@@ -64,18 +64,19 @@ export default function OnboardingPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-background safe-area-top safe-area-bottom">
-      <div className="flex flex-col items-center justify-center py-8 px-4">
-        <div className="relative h-24 w-24 mb-4 overflow-hidden rounded-full shadow-xl ring-4 ring-blue-500/80 bg-white">
-          <Image src="/images/image.png" alt="TSDI Logo" fill className="object-contain p-1" priority />
+      <div className="flex-1 flex flex-col items-center justify-center max-w-md mx-auto w-full px-4 py-6">
+        {/* Logo Header */}
+        <div className="flex flex-col items-center mb-6">
+          <div className="relative h-20 w-20 mb-3 overflow-hidden rounded-full shadow-xl ring-4 ring-blue-500/80 bg-white">
+            <Image src="/images/logo.png" alt="TDTU Logo" fill sizes="80px" className="object-cover" priority />
+          </div>
+          <h1 className="text-base font-bold text-foreground">{t.common.appName}</h1>
+          <p className="text-xs text-muted-foreground mt-1 text-center">{t.common.appFullName}</p>
         </div>
-        <h1 className="text-lg font-bold text-foreground">{t.common.appName}</h1>
-        <p className="text-sm text-muted-foreground mt-1 text-center px-4">{t.common.appFullName}</p>
-      </div>
 
-      {/* Content */}
-      <div className="flex-1 px-3 pb-6">
+        {/* Content */}
         {step === "language" ? (
-          <Card className="border-0 shadow-lg">
+          <Card className="border-0 shadow-lg w-full">
             <CardHeader className="text-center pb-3 px-4 pt-4">
               <CardTitle className="text-base">{t.onboarding.welcome}</CardTitle>
               <CardDescription className="text-xs">{t.onboarding.selectLanguage}</CardDescription>
@@ -129,7 +130,7 @@ export default function OnboardingPage() {
             </CardContent>
           </Card>
         ) : (
-          <Card className="border-0 shadow-lg">
+          <Card className="border-0 shadow-lg w-full">
             <CardHeader className="pb-3 px-4 pt-4">
               <CardTitle className="text-base">{t.onboarding.personalInfo}</CardTitle>
               <CardDescription>
@@ -197,7 +198,7 @@ export default function OnboardingPage() {
                       <SelectContent>
                         {[1, 2, 3, 4, 5, 6].map((c) => (
                           <SelectItem key={c} value={c.toString()}>
-                            {c}-{locale === "ru" ? "курс" : locale === "en" ? "year" : "kurs"}
+                            {c}-{locale === "ru" ? "курс" : locale === "en" ? "course" : "kurs"}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -217,16 +218,14 @@ export default function OnboardingPage() {
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="age" className="text-xs">
-                      {t.onboarding.age}
+                      {t.onboarding.group}
                     </Label>
                     <Input
                       id="age"
-                      type="number"
-                      min={16}
-                      max={99}
+                      type="text"
                       value={age}
                       onChange={(e) => setAge(e.target.value)}
-                      placeholder={t.onboarding.enterAge}
+                      placeholder={t.onboarding.enterGroup}
                       className="h-10 text-sm"
                     />
                   </div>
@@ -252,16 +251,16 @@ export default function OnboardingPage() {
             </CardContent>
           </Card>
         )}
-      </div>
 
-      {/* Step Indicator */}
-      <div className="flex items-center justify-center gap-1.5 pb-4">
-        <div
-          className={cn("h-1.5 w-6 rounded-full transition-colors", step === "language" ? "bg-primary" : "bg-muted")}
-        />
-        <div
-          className={cn("h-1.5 w-6 rounded-full transition-colors", step === "profile" ? "bg-primary" : "bg-muted")}
-        />
+        {/* Step Indicator */}
+        <div className="flex items-center justify-center gap-1.5 mt-6">
+          <div
+            className={cn("h-1.5 w-6 rounded-full transition-colors", step === "language" ? "bg-primary" : "bg-muted")}
+          />
+          <div
+            className={cn("h-1.5 w-6 rounded-full transition-colors", step === "profile" ? "bg-primary" : "bg-muted")}
+          />
+        </div>
       </div>
     </div>
   )

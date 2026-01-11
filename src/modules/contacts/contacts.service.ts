@@ -7,7 +7,8 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Contact } from '../../database/entities';
-import { ContactStatus } from '../../database/enums';
+import { ContactStatus, AuditAction, AuditEntityType } from '../../database/enums';
+import { AuditService } from '../audit/audit.service';
 import {
   CreateContactDto,
   UpdateContactDto,
@@ -22,13 +23,14 @@ export class ContactsService {
   constructor(
     @InjectRepository(Contact)
     private readonly contactRepository: Repository<Contact>,
+    private readonly auditService: AuditService,
   ) {}
 
   /**
    * Create a new contact person.
    * Admin only.
    */
-  async create(dto: CreateContactDto): Promise<ContactResponseDto> {
+  async create(dto: CreateContactDto, userId?: string): Promise<ContactResponseDto> {
     // Check for duplicate Telegram user ID
     const existing = await this.contactRepository.findOne({
       where: { telegramUserId: dto.telegramUserId },
@@ -44,12 +46,23 @@ export class ContactsService {
       position: dto.position || null,
       department: dto.department || null,
       description: dto.description || null,
+      photoUrl: dto.photoUrl || null,
       isActive: dto.isActive ?? true,
       sortOrder: dto.sortOrder ?? 0,
       status: ContactStatus.ACTIVE,
     });
 
     const saved = await this.contactRepository.save(contact);
+    
+    // Log audit - always log
+    await this.auditService.log({
+      actorUserId: userId || null,
+      action: AuditAction.CONTACT_CREATE,
+      entityType: AuditEntityType.CONTACT,
+      entityId: saved.id,
+      metadata: { fullName: saved.fullName },
+    });
+    
     this.logger.log(`Created contact: ${saved.id} (Telegram: ${dto.telegramUserId})`);
 
     return this.toResponseDto(saved);
@@ -59,7 +72,7 @@ export class ContactsService {
    * Update a contact person.
    * Admin only.
    */
-  async update(id: string, dto: UpdateContactDto): Promise<ContactResponseDto> {
+  async update(id: string, dto: UpdateContactDto, userId?: string): Promise<ContactResponseDto> {
     const contact = await this.contactRepository.findOne({ where: { id } });
 
     if (!contact) {
@@ -83,11 +96,22 @@ export class ContactsService {
     if (dto.position !== undefined) contact.position = dto.position;
     if (dto.department !== undefined) contact.department = dto.department;
     if (dto.description !== undefined) contact.description = dto.description;
+    if (dto.photoUrl !== undefined) contact.photoUrl = dto.photoUrl;
     if (dto.status !== undefined) contact.status = dto.status;
     if (dto.isActive !== undefined) contact.isActive = dto.isActive;
     if (dto.sortOrder !== undefined) contact.sortOrder = dto.sortOrder;
 
     const updated = await this.contactRepository.save(contact);
+    
+    // Log audit - always log
+    await this.auditService.log({
+      actorUserId: userId || null,
+      action: AuditAction.CONTACT_UPDATE,
+      entityType: AuditEntityType.CONTACT,
+      entityId: id,
+      metadata: { fullName: updated.fullName },
+    });
+    
     this.logger.log(`Updated contact: ${id}`);
 
     return this.toResponseDto(updated);
@@ -97,14 +121,25 @@ export class ContactsService {
    * Delete a contact person.
    * Admin only.
    */
-  async delete(id: string): Promise<void> {
+  async delete(id: string, userId?: string): Promise<void> {
     const contact = await this.contactRepository.findOne({ where: { id } });
 
     if (!contact) {
       throw new NotFoundException('Contact not found');
     }
 
+    const fullName = contact.fullName;
     await this.contactRepository.remove(contact);
+    
+    // Log audit - always log
+    await this.auditService.log({
+      actorUserId: userId || null,
+      action: AuditAction.CONTACT_DELETE,
+      entityType: AuditEntityType.CONTACT,
+      entityId: id,
+      metadata: { fullName: contact.fullName },
+    });
+    
     this.logger.log(`Deleted contact: ${id}`);
   }
 
@@ -148,6 +183,22 @@ export class ContactsService {
   }
 
   /**
+   * Get single contact by ID.
+   * Public endpoint - returns limited details.
+   */
+  async findByIdPublic(id: string): Promise<PublicContactResponseDto> {
+    const contact = await this.contactRepository.findOne({
+      where: { id, isActive: true, status: ContactStatus.ACTIVE },
+    });
+
+    if (!contact) {
+      throw new NotFoundException('Contact not found');
+    }
+
+    return this.toPublicResponseDto(contact);
+  }
+
+  /**
    * Get contact entity by ID.
    * Internal use only.
    */
@@ -181,6 +232,7 @@ export class ContactsService {
       position: contact.position,
       department: contact.department,
       description: contact.description,
+      photoUrl: contact.photoUrl,
       status: contact.status,
       isActive: contact.isActive,
       sortOrder: contact.sortOrder,
@@ -199,6 +251,8 @@ export class ContactsService {
       position: contact.position,
       department: contact.department,
       description: contact.description,
+      photoUrl: contact.photoUrl,
+      status: contact.status,
     };
   }
 }

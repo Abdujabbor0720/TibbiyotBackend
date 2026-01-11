@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { User, Contact, NewsPost, Broadcast, AuditLog } from '../../database/entities';
+import { Repository, MoreThanOrEqual } from 'typeorm';
+import { User, Contact, NewsPost, Broadcast, AuditLog, Message } from '../../database/entities';
 
 @Injectable()
 export class AdminService {
@@ -16,24 +16,47 @@ export class AdminService {
     private readonly broadcastRepository: Repository<Broadcast>,
     @InjectRepository(AuditLog)
     private readonly auditLogRepository: Repository<AuditLog>,
+    @InjectRepository(Message)
+    private readonly messageRepository: Repository<Message>,
   ) {}
 
   /**
    * Get dashboard statistics
    */
   async getDashboardStats() {
-    const [totalUsers, totalContacts, totalNews, totalBroadcasts] = await Promise.all([
+    // Get today's start for messages count
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const [totalUsers, totalContacts, totalNews, totalBroadcasts, totalMessages, messagesToday] = await Promise.all([
       this.userRepository.count(),
       this.contactRepository.count(),
       this.newsRepository.count(),
       this.broadcastRepository.count(),
+      this.messageRepository.count(),
+      this.messageRepository.count({
+        where: {
+          createdAt: MoreThanOrEqual(todayStart),
+        },
+      }),
     ]);
+
+    // Calculate successful broadcasts (sum of successCount)
+    const broadcastStats = await this.broadcastRepository
+      .createQueryBuilder('broadcast')
+      .select('SUM(broadcast.successCount)', 'totalSuccess')
+      .addSelect('SUM(broadcast.failureCount)', 'totalFailure')
+      .getRawOne();
 
     return {
       totalUsers,
       totalContacts,
       totalNews,
       totalBroadcasts,
+      totalMessages,
+      messagesToday,
+      broadcastSuccess: parseInt(broadcastStats?.totalSuccess || '0'),
+      broadcastFailure: parseInt(broadcastStats?.totalFailure || '0'),
     };
   }
 
@@ -41,12 +64,13 @@ export class AdminService {
    * Get activity logs (audit logs)
    */
   async getActivityLogs(limit: number, offset: number) {
-    const [logs, total] = await this.auditLogRepository.findAndCount({
-      relations: ['actor'],
-      order: { createdAt: 'DESC' },
-      take: limit,
-      skip: offset,
-    });
+    const [logs, total] = await this.auditLogRepository
+      .createQueryBuilder('log')
+      .leftJoinAndSelect('log.actor', 'actor')
+      .orderBy('log.createdAt', 'DESC')
+      .take(limit)
+      .skip(offset)
+      .getManyAndCount();
 
     return {
       data: logs.map(log => ({

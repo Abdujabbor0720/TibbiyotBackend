@@ -22,8 +22,8 @@ export class AuditLog {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'uuid' })
-  actorUserId: string;
+  @Column({ type: 'varchar', nullable: true })
+  actorUserId: string | null;
 
   @Column({
     type: 'enum',
@@ -62,8 +62,8 @@ export class AuditLog {
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 
-  // Relations
-  @ManyToOne('User', 'auditLogs', { onDelete: 'SET NULL' })
+  // Relations - nullable since actorUserId can be null for system actions
+  @ManyToOne('User', 'auditLogs', { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'actorUserId' })
   actor: any;
 }

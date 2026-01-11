@@ -4,11 +4,11 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useApp } from "@/lib/store"
 import { AppLayout } from "@/components/layout/app-layout"
+import { MediaUpload } from "@/components/ui/media-upload"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Progress } from "@/components/ui/progress"
 import {
   AlertDialog,
@@ -21,57 +21,154 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { ArrowLeft, Send, MessageSquare, Upload, CheckCircle2 } from "lucide-react"
+import { ArrowLeft, Send, MessageSquare, CheckCircle2, Loader2, XCircle, Users } from "lucide-react"
 import { hapticFeedback } from "@/lib/telegram"
-import { adminStatsMock } from "@/lib/mock-data"
+import { adminApi } from "@/lib/api"
 
-type SendingState = "idle" | "sending" | "sent"
+type SendingState = "idle" | "sending" | "sent" | "error"
+
+interface UploadedMedia {
+  id: string;
+  url: string;
+  publicId: string;
+  type: 'image' | 'video' | 'audio' | 'file';
+  name: string;
+  size: number;
+}
+
+// Helper to get auth token from localStorage
+const getAuthToken = (): string | null => {
+  if (typeof window === 'undefined') return null
+  return localStorage.getItem('auth_token')
+}
 
 export default function AdminBroadcastPage() {
   const router = useRouter()
   const { isAdmin, t, locale } = useApp()
-  const [activeTab, setActiveTab] = useState<"uz-lat" | "uz-cyr" | "ru" | "en">("uz-lat")
-  const [messages, setMessages] = useState({
-    "uz-lat": "",
-    "uz-cyr": "",
-    ru: "",
-    en: "",
-  })
+  const [message, setMessage] = useState("")
+  const [mediaFiles, setMediaFiles] = useState<UploadedMedia[]>([])
   const [sendingState, setSendingState] = useState<SendingState>("idle")
-  const [progress, setProgress] = useState(0)
+  const [broadcastResult, setBroadcastResult] = useState<{
+    id: string;
+    status: string;
+    totalRecipients: number;
+    successCount: number;
+    failureCount: number;
+  } | null>(null)
+  const [totalUsers, setTotalUsers] = useState(0)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isAdmin) {
       router.replace("/home")
+      return
+    }
+    
+    // Fetch total users count
+    const token = getAuthToken()
+    if (token) {
+      adminApi.getStats(token).then(res => {
+        if (res.success && res.data) {
+          setTotalUsers(res.data.totalUsers)
+        }
+      })
     }
   }, [isAdmin, router])
 
   if (!isAdmin) return null
 
-  const handleSend = () => {
+  const handleSend = async () => {
     hapticFeedback("success")
     setSendingState("sending")
-    setProgress(0)
-
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval)
-          setSendingState("sent")
-          return 100
-        }
-        return prev + 10
+    setError(null)
+    
+    const token = getAuthToken()
+    if (!token) {
+      setError("Token topilmadi. Qayta login qiling.")
+      setSendingState("error")
+      return
+    }
+    
+    try {
+      // Send same message to all users (admin writes in preferred language)
+      const result = await adminApi.sendBroadcast(token, {
+        messageUzLat: message,
+        messageUzCyr: message,
+        messageRu: message,
+        messageEn: message,
+        message: message,
+        mediaUrls: mediaFiles.map(f => f.url),
       })
-    }, 200)
+      
+      if (result.success && result.data) {
+        setBroadcastResult({
+          id: result.data.id,
+          status: result.data.status,
+          totalRecipients: totalUsers,
+          successCount: 0,
+          failureCount: 0,
+        })
+        setSendingState("sent")
+        hapticFeedback("success")
+        
+        // Poll for status updates
+        pollBroadcastStatus(result.data.id, token)
+      } else {
+        setError(result.error || "Xabar yuborishda xatolik")
+        setSendingState("error")
+      }
+    } catch (err) {
+      console.error("Broadcast error:", err)
+      setError("Xabar yuborishda xatolik yuz berdi")
+      setSendingState("error")
+    }
+  }
+  
+  const pollBroadcastStatus = async (broadcastId: string, token: string) => {
+    // Poll every 2 seconds for 30 seconds max
+    let attempts = 0
+    const maxAttempts = 15
+    
+    const poll = async () => {
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/v1/admin/broadcast/${broadcastId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        const data = await res.json()
+        
+        if (data.success && data.data) {
+          setBroadcastResult(prev => prev ? {
+            ...prev,
+            status: data.data.status,
+            successCount: data.data.successCount || 0,
+            failureCount: data.data.failureCount || 0,
+          } : null)
+          
+          // Continue polling if still processing
+          if (data.data.status === 'processing' || data.data.status === 'pending') {
+            attempts++
+            if (attempts < maxAttempts) {
+              setTimeout(poll, 2000)
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Poll error:", err)
+      }
+    }
+    
+    setTimeout(poll, 2000)
   }
 
   const handleReset = () => {
     setSendingState("idle")
-    setProgress(0)
-    setMessages({ "uz-lat": "", "uz-cyr": "", ru: "", en: "" })
+    setBroadcastResult(null)
+    setMessage("")
+    setMediaFiles([])
+    setError(null)
   }
 
-  const hasMessage = messages["uz-lat"] || messages["uz-cyr"] || messages["ru"] || messages["en"]
+  const hasMessage = message.trim().length > 0
 
   const getLocalizedText = (uzLat: string, uzCyr: string, ru: string, en: string) => {
     if (locale === "en") return en
@@ -82,7 +179,7 @@ export default function AdminBroadcastPage() {
 
   return (
     <AppLayout title={t.admin.broadcast} showFooter={false}>
-      <div className="container max-w-lg mx-auto px-3 py-3 space-y-3">
+      <div className="container max-w-md mx-auto px-3 py-3 space-y-3">
         <Button
           variant="ghost"
           size="sm"
@@ -98,36 +195,79 @@ export default function AdminBroadcastPage() {
           <h2 className="font-semibold text-sm text-foreground">{t.admin.broadcast}</h2>
         </div>
 
-        {sendingState === "sent" ? (
+        {sendingState === "sent" && broadcastResult ? (
           <Card className="border-green-500/50 bg-green-500/5">
             <CardContent className="p-5 text-center">
               <CheckCircle2 className="h-14 w-14 text-green-500 mx-auto mb-3" />
               <h3 className="text-base font-semibold text-foreground mb-1">{t.admin.sent}!</h3>
-              <p className="text-xs text-muted-foreground mb-3">
+              <p className="text-xs text-muted-foreground mb-2">
                 {getLocalizedText(
-                  `Xabar ${adminStatsMock.totalUsers} foydalanuvchiga yuborildi`,
-                  `Хабар ${adminStatsMock.totalUsers} фойдаланувчига юборилди`,
-                  `Сообщение отправлено ${adminStatsMock.totalUsers} пользователям`,
-                  `Message sent to ${adminStatsMock.totalUsers} users`,
+                  `Xabar ${broadcastResult.totalRecipients} foydalanuvchiga yuborilmoqda`,
+                  `Хабар ${broadcastResult.totalRecipients} фойдаланувчига юборилмоқда`,
+                  `Сообщение отправляется ${broadcastResult.totalRecipients} пользователям`,
+                  `Message is being sent to ${broadcastResult.totalRecipients} users`,
                 )}
               </p>
+              
+              {/* Status info */}
+              <div className="flex items-center justify-center gap-4 text-xs mb-3">
+                <span className="text-green-600">✓ {broadcastResult.successCount}</span>
+                {broadcastResult.failureCount > 0 && (
+                  <span className="text-red-500">✗ {broadcastResult.failureCount}</span>
+                )}
+                <span className="text-muted-foreground capitalize">{broadcastResult.status}</span>
+              </div>
+              
               <Button onClick={handleReset} className="h-9 text-sm btn-animate">
                 {getLocalizedText("Yangi xabar", "Янги хабар", "Новое сообщение", "New message")}
               </Button>
             </CardContent>
           </Card>
+        ) : sendingState === "error" ? (
+          <Card className="border-red-500/50 bg-red-500/5">
+            <CardContent className="p-5 text-center">
+              <XCircle className="h-14 w-14 text-red-500 mx-auto mb-3" />
+              <h3 className="text-base font-semibold text-foreground mb-1">
+                {getLocalizedText("Xatolik", "Хатолик", "Ошибка", "Error")}
+              </h3>
+              <p className="text-xs text-muted-foreground mb-3">{error}</p>
+              <Button onClick={handleReset} className="h-9 text-sm btn-animate">
+                {getLocalizedText("Qayta urinish", "Қайта уриниш", "Попробовать снова", "Try again")}
+              </Button>
+            </CardContent>
+          </Card>
         ) : sendingState === "sending" ? (
           <Card>
-            <CardContent className="p-5">
-              <h3 className="text-xs font-medium text-foreground mb-3 text-center">{t.admin.sending}</h3>
-              <Progress value={progress} className="h-1.5 mb-1.5" />
-              <p className="text-[10px] text-muted-foreground text-center">
-                {Math.round((progress / 100) * adminStatsMock.totalUsers)} / {adminStatsMock.totalUsers}
+            <CardContent className="p-5 text-center">
+              <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto mb-3" />
+              <h3 className="text-xs font-medium text-foreground mb-2">{t.admin.sending}</h3>
+              <p className="text-[10px] text-muted-foreground">
+                {getLocalizedText(
+                  "Iltimos kuting...",
+                  "Илтимос кутинг...",
+                  "Пожалуйста, подождите...",
+                  "Please wait..."
+                )}
               </p>
             </CardContent>
           </Card>
         ) : (
           <>
+            {/* User count info */}
+            <Card className="bg-blue-500/5 border-blue-500/20">
+              <CardContent className="p-3 flex items-center gap-2">
+                <Users className="h-4 w-4 text-blue-500" />
+                <p className="text-xs text-foreground">
+                  {getLocalizedText(
+                    `Xabar ${totalUsers} foydalanuvchiga yuboriladi`,
+                    `Хабар ${totalUsers} фойдаланувчига юборилади`,
+                    `Сообщение будет отправлено ${totalUsers} пользователям`,
+                    `Message will be sent to ${totalUsers} users`,
+                  )}
+                </p>
+              </CardContent>
+            </Card>
+            
             <Card>
               <CardHeader className="pb-2 px-3 pt-3">
                 <CardTitle className="text-xs font-medium">
@@ -135,79 +275,44 @@ export default function AdminBroadcastPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 px-3 pb-3">
-                <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
-                  <TabsList className="grid w-full grid-cols-4">
-                    <TabsTrigger value="uz-lat" className="text-[10px] px-1">
-                      O&apos;zb
-                    </TabsTrigger>
-                    <TabsTrigger value="uz-cyr" className="text-[10px] px-1">
-                      Ўзб
-                    </TabsTrigger>
-                    <TabsTrigger value="ru" className="text-[10px] px-1">
-                      Рус
-                    </TabsTrigger>
-                    <TabsTrigger value="en" className="text-[10px] px-1">
-                      Eng
-                    </TabsTrigger>
-                  </TabsList>
+                {/* Message textarea - single language */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs">
+                    {getLocalizedText("Xabar matni", "Хабар матни", "Текст сообщения", "Message text")}
+                  </Label>
+                  <Textarea
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    placeholder={getLocalizedText(
+                      "Xabar matnini kiriting...",
+                      "Хабар матнини киритинг...",
+                      "Введите текст сообщения...",
+                      "Enter message text..."
+                    )}
+                    rows={4}
+                    className="text-sm"
+                  />
+                </div>
 
-                  {(["uz-lat", "uz-cyr", "ru", "en"] as const).map((lang) => (
-                    <TabsContent key={lang} value={lang} className="space-y-3">
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">
-                          {lang === "ru"
-                            ? "Текст сообщения"
-                            : lang === "uz-cyr"
-                              ? "Хабар матни"
-                              : lang === "en"
-                                ? "Message text"
-                                : "Xabar matni"}
-                        </Label>
-                        <Textarea
-                          value={messages[lang]}
-                          onChange={(e) => setMessages((prev) => ({ ...prev, [lang]: e.target.value }))}
-                          placeholder={
-                            lang === "ru"
-                              ? "Введите текст сообщения..."
-                              : lang === "uz-cyr"
-                                ? "Хабар матнини киритинг..."
-                                : lang === "en"
-                                  ? "Enter message text..."
-                                  : "Xabar matnini kiriting..."
-                          }
-                          rows={5}
-                          className="text-sm"
-                        />
-                      </div>
-                    </TabsContent>
-                  ))}
-                </Tabs>
-
-                <div className="border-2 border-dashed rounded-lg p-3 text-center">
-                  <Upload className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
-                  <p className="text-[10px] text-muted-foreground">
+                {/* Media Upload */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs">
                     {getLocalizedText(
                       "Media biriktirish (ixtiyoriy)",
                       "Медиа бириктириш (ихтиёрий)",
                       "Прикрепить медиа (необязательно)",
                       "Attach media (optional)",
                     )}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">(Demo - {t.admin.notWorking})</p>
+                  </Label>
+                  <MediaUpload
+                    value={mediaFiles}
+                    onChange={setMediaFiles}
+                    accept="all"
+                    multiple={true}
+                    maxFiles={10}
+                    maxSize={50}
+                  />
                 </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-primary/5 border-primary/20">
-              <CardContent className="p-3">
-                <p className="text-xs text-foreground">
-                  {getLocalizedText(
-                    `Xabar ${adminStatsMock.totalUsers} foydalanuvchiga yuboriladi`,
-                    `Хабар ${adminStatsMock.totalUsers} фойдаланувчига юборилади`,
-                    `Сообщение будет отправлено ${adminStatsMock.totalUsers} пользователям`,
-                    `Message will be sent to ${adminStatsMock.totalUsers} users`,
-                  )}
-                </p>
               </CardContent>
             </Card>
 
@@ -223,10 +328,10 @@ export default function AdminBroadcastPage() {
                   <AlertDialogTitle className="text-sm">{t.admin.confirmBroadcast}</AlertDialogTitle>
                   <AlertDialogDescription className="text-xs">
                     {getLocalizedText(
-                      `Siz ${adminStatsMock.totalUsers} foydalanuvchiga xabar yubormoqchisiz. Bu amalni bekor qilib bo'lmaydi.`,
-                      `Сиз ${adminStatsMock.totalUsers} фойдаланувчига хабар юбормоқчисиз. Бу амални бекор қилиб бўлмайди.`,
-                      `Вы собираетесь отправить сообщение ${adminStatsMock.totalUsers} пользователям. Это действие нельзя отменить.`,
-                      `You are about to send a message to ${adminStatsMock.totalUsers} users. This action cannot be undone.`,
+                      `Siz ${totalUsers} foydalanuvchiga xabar yubormoqchisiz. Bu amalni bekor qilib bo'lmaydi.`,
+                      `Сиз ${totalUsers} фойдаланувчига хабар юбормоқчисиз. Бу амални бекор қилиб бўлмайди.`,
+                      `Вы собираетесь отправить сообщение ${totalUsers} пользователям. Это действие нельзя отменить.`,
+                      `You are about to send a message to ${totalUsers} users. This action cannot be undone.`,
                     )}
                   </AlertDialogDescription>
                 </AlertDialogHeader>

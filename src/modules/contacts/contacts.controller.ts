@@ -19,7 +19,8 @@ import {
   PublicContactResponseDto,
 } from './dto';
 import { JwtAuthGuard, AdminGuard } from '../../common/guards';
-import { AdminOnly, Auth } from '../../common/decorators';
+import { CurrentUser } from '../../common/decorators';
+import { JwtPayload } from '../auth/auth.service';
 
 /**
  * Public contacts controller.
@@ -38,6 +39,16 @@ export class ContactsController {
   @Get()
   async findAllActive(): Promise<PublicContactResponseDto[]> {
     return this.contactsService.findAllActive();
+  }
+
+  /**
+   * Get single contact by ID.
+   * Public endpoint - no authentication required.
+   * Returns limited contact information.
+   */
+  @Get(':id')
+  async findById(@Param('id', ParseUUIDPipe) id: string): Promise<PublicContactResponseDto> {
+    return this.contactsService.findByIdPublic(id);
   }
 }
 
@@ -73,8 +84,11 @@ export class AdminContactsController {
    * Admin only.
    */
   @Post()
-  async create(@Body() dto: CreateContactDto): Promise<ContactResponseDto> {
-    return this.contactsService.create(dto);
+  async create(
+    @Body() dto: CreateContactDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<ContactResponseDto> {
+    return this.contactsService.create(dto, user.sub);
   }
 
   /**
@@ -85,8 +99,9 @@ export class AdminContactsController {
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateContactDto,
+    @CurrentUser() user: JwtPayload,
   ): Promise<ContactResponseDto> {
-    return this.contactsService.update(id, dto);
+    return this.contactsService.update(id, dto, user.sub);
   }
 
   /**
@@ -95,7 +110,10 @@ export class AdminContactsController {
    */
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async delete(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
-    return this.contactsService.delete(id);
+  async delete(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<void> {
+    return this.contactsService.delete(id, user.sub);
   }
 }

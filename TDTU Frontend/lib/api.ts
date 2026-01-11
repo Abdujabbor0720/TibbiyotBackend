@@ -1,6 +1,25 @@
 // This file contains all API endpoints that need to be connected to the backend
+import axios, { AxiosError, AxiosRequestConfig } from 'axios'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+
+// Create axios instance with default config
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  timeout: 30000, // 30 seconds timeout
+})
+
+// Response interceptor for error handling
+api.interceptors.response.use(
+  (response) => response,
+  (error: AxiosError) => {
+    console.error('API Error:', error)
+    return Promise.reject(error)
+  }
+)
 
 export interface ApiResponse<T> {
   success: boolean
@@ -8,33 +27,39 @@ export interface ApiResponse<T> {
   error?: string
 }
 
-// Helper function for API calls
+// Helper function for API calls using axios
 async function apiCall<T>(
   endpoint: string,
-  options: RequestInit = {}
+  config: AxiosRequestConfig = {}
 ): Promise<ApiResponse<T>> {
   try {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true',
-        ...options.headers,
-      },
+    const response = await api.request<{ success: boolean; data: T; message?: string }>({
+      url: endpoint,
+      ...config,
     })
     
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      return { 
-        success: false, 
-        error: errorData.message || `HTTP error! status: ${response.status}` 
+    // Handle 204 No Content (DELETE requests)
+    if (response.status === 204) {
+      return { success: true, data: undefined as T }
+    }
+    
+    // Backend already returns { success, data } format - extract it properly
+    const backendResponse = response.data
+    if (backendResponse && backendResponse.success !== undefined) {
+      if (backendResponse.success) {
+        return { success: true, data: backendResponse.data }
+      } else {
+        return { success: false, error: backendResponse.message || 'Unknown error' }
       }
     }
     
-    const data = await response.json()
-    return { success: true, data }
+    // Fallback for responses without success field
+    return { success: true, data: response.data as T }
   } catch (error) {
-    console.error('API Error:', error)
+    if (axios.isAxiosError(error)) {
+      const message = error.response?.data?.message || error.message || 'Network error'
+      return { success: false, error: message }
+    }
     return { 
       success: false, 
       error: error instanceof Error ? error.message : 'Network error' 
@@ -52,8 +77,22 @@ export const userApi = {
     }
     return apiCall('/api/v1/auth/telegram-webapp', {
       method: 'POST',
-      body: JSON.stringify({ initData }),
+      data: { initData },
       headers,
+    })
+  },
+
+  // Development-only login (works only when backend is in dev mode)
+  devLogin: async (telegramUserId: string, firstName?: string, lastName?: string): Promise<ApiResponse<{ accessToken: string; user: any }>> => {
+    return apiCall('/api/v1/auth/dev-login', {
+      method: 'POST',
+      data: {
+        telegramUserId,
+        firstName: firstName || 'Dev',
+        lastName: lastName || 'Admin',
+        username: 'dev_admin',
+        languageCode: 'uz',
+      },
     })
   },
 
@@ -62,6 +101,7 @@ export const userApi = {
     token: string,
   ): Promise<ApiResponse<{ id: string; telegramUserId: string; firstName: string; lastName: string; course?: number; major?: string; age?: number; language: string; role: string }>> => {
     return apiCall('/api/v1/me', {
+      method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -75,7 +115,7 @@ export const userApi = {
   ): Promise<ApiResponse<any>> => {
     return apiCall('/api/v1/me', {
       method: 'PATCH',
-      body: JSON.stringify(profile),
+      data: profile,
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -85,28 +125,35 @@ export const userApi = {
 
 // News API
 export const newsApi = {
-  // Get all news
-  getAll: async (params?: { mediaType?: string; search?: string; limit?: number; offset?: number }): Promise<
-    ApiResponse<
-      Array<{
-        id: string
-        title: Record<string, string>
-        excerpt: Record<string, string>
-        body: Record<string, string>
-        mediaType: string
-        mediaUrls?: string[]
-        publishedAt: string
-      }>
-    >
+  // Get all news (public)
+  getAll: async (params?: { mediaType?: string; search?: string; limit?: number; page?: number }): Promise<
+    ApiResponse<any>
   > => {
-    const queryParams = new URLSearchParams()
-    if (params?.mediaType) queryParams.append('mediaType', params.mediaType)
-    if (params?.search) queryParams.append('search', params.search)
-    if (params?.limit) queryParams.append('limit', params.limit.toString())
-    if (params?.offset) queryParams.append('offset', params.offset.toString())
-    
-    const queryString = queryParams.toString()
-    return apiCall(`/api/v1/news${queryString ? `?${queryString}` : ''}`)
+    return apiCall('/api/v1/news', {
+      method: 'GET',
+      params: {
+        mediaType: params?.mediaType,
+        search: params?.search,
+        limit: params?.limit,
+        page: params?.page,
+      },
+    })
+  },
+
+  // Get all news for admin (with full data including all language fields)
+  getAllAdmin: async (token: string, params?: { limit?: number; page?: number }): Promise<
+    ApiResponse<any>
+  > => {
+    return apiCall('/api/v1/admin/news', {
+      method: 'GET',
+      params: {
+        limit: params?.limit,
+        page: params?.page,
+      },
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    })
   },
 
   // Get single news item
@@ -123,7 +170,9 @@ export const newsApi = {
       publishedAt: string
     }>
   > => {
-    return apiCall(`/api/v1/news/${id}`)
+    return apiCall(`/api/v1/news/${id}`, {
+      method: 'GET',
+    })
   },
 
   // Create news (admin only)
@@ -135,7 +184,7 @@ export const newsApi = {
   }): Promise<ApiResponse<{ id: string }>> => {
     return apiCall('/api/v1/admin/news', {
       method: 'POST',
-      body: JSON.stringify(news),
+      data: news,
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -155,7 +204,7 @@ export const newsApi = {
   ): Promise<ApiResponse<boolean>> => {
     return apiCall(`/api/v1/admin/news/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify(news),
+      data: news,
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -175,16 +224,17 @@ export const newsApi = {
 
 // Contacts API
 export const contactsApi = {
-  // Get all contacts
+  // Get all contacts (public)
   getAll: async (params?: { search?: string; status?: string }): Promise<
     ApiResponse<
       Array<{
         id: string
         fullName: string
-        telegramId: string
-        position: Record<string, string>
-        department: Record<string, string>
-        description: Record<string, string>
+        telegramId?: string
+        telegramUserId?: string
+        position: string | Record<string, string> | null
+        department: string | Record<string, string> | null
+        description: string | Record<string, string> | null
         photoUrl?: string
         email?: string
         phone?: string
@@ -192,12 +242,23 @@ export const contactsApi = {
       }>
     >
   > => {
-    const queryParams = new URLSearchParams()
-    if (params?.search) queryParams.append('search', params.search)
-    if (params?.status) queryParams.append('status', params.status)
-    
-    const queryString = queryParams.toString()
-    return apiCall(`/api/v1/contacts${queryString ? `?${queryString}` : ''}`)
+    return apiCall('/api/v1/contacts', {
+      method: 'GET',
+      params: {
+        search: params?.search,
+        status: params?.status,
+      },
+    })
+  },
+
+  // Get all contacts for admin (full data)
+  getAllAdmin: async (token: string): Promise<ApiResponse<any>> => {
+    return apiCall('/api/v1/admin/contacts', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    })
   },
 
   // Get single contact
@@ -207,33 +268,37 @@ export const contactsApi = {
     ApiResponse<{
       id: string
       fullName: string
-      telegramId: string
-      position: Record<string, string>
-      department: Record<string, string>
-      description: Record<string, string>
+      telegramId?: string
+      telegramUserId?: string
+      position: string | Record<string, string> | null
+      department: string | Record<string, string> | null
+      description: string | Record<string, string> | null
       photoUrl?: string
       email?: string
       phone?: string
       status: string
     }>
   > => {
-    return apiCall(`/api/v1/contacts/${id}`)
+    return apiCall(`/api/v1/contacts/${id}`, {
+      method: 'GET',
+    })
   },
 
   // Create contact (admin only)
   create: async (token: string, contact: {
     fullName: string
-    telegramId: string
-    position: Record<string, string>
-    department: Record<string, string>
-    description: Record<string, string>
+    telegramId?: string
+    telegramUserId?: string
+    position?: string
+    department?: string
+    description?: string
     photoUrl?: string
     email?: string
     phone?: string
   }): Promise<ApiResponse<{ id: string }>> => {
     return apiCall('/api/v1/admin/contacts', {
       method: 'POST',
-      body: JSON.stringify(contact),
+      data: contact,
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -258,7 +323,7 @@ export const contactsApi = {
   ): Promise<ApiResponse<boolean>> => {
     return apiCall(`/api/v1/admin/contacts/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify(contact),
+      data: contact,
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -285,9 +350,14 @@ export const adminApi = {
       totalContacts: number
       totalNews: number
       totalBroadcasts: number
+      totalMessages: number
+      messagesToday: number
+      broadcastSuccess: number
+      broadcastFailure: number
     }>
   > => {
     return apiCall('/api/v1/admin/stats', {
+      method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -296,8 +366,8 @@ export const adminApi = {
 
   // Get activity logs
   getActivityLogs: async (token: string, params?: { limit?: number; offset?: number }): Promise<
-    ApiResponse<
-      Array<{
+    ApiResponse<{
+      data: Array<{
         id: string
         action: string
         entityType: string
@@ -310,14 +380,17 @@ export const adminApi = {
           lastName: string
         }
       }>
-    >
+      total: number
+      limit: number
+      offset: number
+    }>
   > => {
-    const queryParams = new URLSearchParams()
-    if (params?.limit) queryParams.append('limit', params.limit.toString())
-    if (params?.offset) queryParams.append('offset', params.offset.toString())
-    
-    const queryString = queryParams.toString()
-    return apiCall(`/api/v1/admin/activity${queryString ? `?${queryString}` : ''}`, {
+    return apiCall('/api/v1/admin/activity', {
+      method: 'GET',
+      params: {
+        limit: params?.limit,
+        offset: params?.offset,
+      },
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -325,13 +398,13 @@ export const adminApi = {
   },
 
   // Send broadcast message
-  sendBroadcast: async (token: string, message: {
-    title: Record<string, string>
-    body: Record<string, string>
+  sendBroadcast: async (token: string, data: {
+    message: string
+    mediaUrls?: string[]
   }): Promise<ApiResponse<{ id: string; status: string }>> => {
     return apiCall('/api/v1/admin/broadcast', {
       method: 'POST',
-      body: JSON.stringify(message),
+      data: data,
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -352,6 +425,7 @@ export const adminApi = {
     >
   > => {
     return apiCall('/api/v1/admin/broadcast', {
+      method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -367,18 +441,17 @@ export const uploadApi = {
       const formData = new FormData()
       formData.append('file', file)
       
-      const response = await fetch('/api/cloudinary', {
-        method: 'POST',
-        body: formData,
+      const response = await axios.post('/api/cloudinary', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
       })
       
-      if (!response.ok) {
-        return { success: false, error: `Upload failed: ${response.status}` }
-      }
-      
-      const data = await response.json()
-      return { success: true, data: { url: data.url, publicId: data.publicId } }
+      return { success: true, data: { url: response.data.url, publicId: response.data.publicId } }
     } catch (error) {
+      if (axios.isAxiosError(error)) {
+        return { success: false, error: `Upload failed: ${error.response?.status || error.message}` }
+      }
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Upload failed' 
@@ -389,18 +462,15 @@ export const uploadApi = {
   // Delete media from Cloudinary
   deleteMedia: async (publicId: string): Promise<ApiResponse<boolean>> => {
     try {
-      const response = await fetch('/api/cloudinary', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ publicId }),
+      await axios.delete('/api/cloudinary', {
+        data: { publicId },
       })
-      
-      if (!response.ok) {
-        return { success: false, error: `Delete failed: ${response.status}` }
-      }
       
       return { success: true, data: true }
     } catch (error) {
+      if (axios.isAxiosError(error)) {
+        return { success: false, error: `Delete failed: ${error.response?.status || error.message}` }
+      }
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Delete failed' 

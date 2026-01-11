@@ -29,6 +29,8 @@ export const redisConfig = registerAs('redis', () => ({
 export const telegramConfig = registerAs('telegram', () => ({
   botToken: process.env.TELEGRAM_BOT_TOKEN,
   adminTelegramId: process.env.ADMIN_TELEGRAM_ID || '',
+  // Support comma-separated list of admin IDs
+  adminTelegramIds: (process.env.ADMIN_TELEGRAM_ID || '').split(',').map(id => id.trim()).filter(Boolean),
   webAppUrl: process.env.WEBAPP_URL,
   initDataMaxAge: parseInt(process.env.TELEGRAM_INIT_DATA_MAX_AGE || '300', 10),
 }));

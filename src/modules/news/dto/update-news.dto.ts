@@ -7,6 +7,7 @@ import {
   IsDateString,
   IsArray,
   IsUUID,
+  IsUrl,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 
@@ -38,6 +39,12 @@ export class UpdateNewsDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(500)
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  titleEn?: string;
+
+  @IsOptional()
+  @IsString()
   @MinLength(10)
   @MaxLength(50000)
   @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
@@ -58,6 +65,12 @@ export class UpdateNewsDto {
   bodyRu?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(50000)
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  bodyEn?: string;
+
+  @IsOptional()
   @IsBoolean()
   isDraft?: boolean;
 
@@ -69,4 +82,9 @@ export class UpdateNewsDto {
   @IsArray()
   @IsUUID('4', { each: true })
   mediaAssetIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  mediaUrls?: string[];
 }

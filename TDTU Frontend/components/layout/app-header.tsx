@@ -24,7 +24,7 @@ export function AppHeader({ title }: AppHeaderProps) {
       <div className="flex h-14 items-center justify-between px-4">
         <Link href="/home" className="flex items-center gap-3 group">
           <div className="relative h-10 w-10 overflow-hidden rounded-full shadow-lg ring-[3px] ring-blue-500/80 group-hover:ring-blue-600 transition-all duration-300 bg-white">
-            <Image src="/images/image.png" alt="TSDI Logo" fill className="object-contain p-0.5" priority />
+            <Image src="/images/logo.png" alt="TDTU Logo" fill sizes="40px" className="object-cover" priority />
           </div>
           <span className="text-sm font-bold text-foreground tracking-tight group-hover:text-primary transition-colors">{t.common.appName}</span>
         </Link>

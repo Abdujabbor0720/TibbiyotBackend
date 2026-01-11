@@ -45,6 +45,9 @@ export class Contact {
   @Column({ type: 'int', default: 0 })
   sortOrder: number;
 
+  @Column({ type: 'text', nullable: true })
+  photoUrl: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 

@@ -116,8 +116,9 @@ export class AdminNewsController {
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateNewsDto,
+    @CurrentUser() user: JwtPayload,
   ): Promise<NewsResponseDto> {
-    return this.newsService.update(id, dto);
+    return this.newsService.update(id, dto, user.sub);
   }
 
   /**
@@ -125,7 +126,10 @@ export class AdminNewsController {
    */
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async delete(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
-    return this.newsService.delete(id);
+  async delete(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<void> {
+    return this.newsService.delete(id, user.sub);
   }
 }

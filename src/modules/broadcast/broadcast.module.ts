@@ -6,6 +6,7 @@ import { BroadcastService } from './broadcast.service';
 import { BroadcastProcessor } from './broadcast.processor';
 import { Broadcast, User } from '../../database/entities';
 import { AuthModule } from '../auth';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { AuthModule } from '../auth';
       },
     }),
     AuthModule,
+    AuditModule,
   ],
   controllers: [BroadcastController],
   providers: [BroadcastService, BroadcastProcessor],

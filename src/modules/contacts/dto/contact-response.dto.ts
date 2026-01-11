@@ -10,6 +10,7 @@ export class ContactResponseDto {
   position: string | null;
   department: string | null;
   description: string | null;
+  photoUrl: string | null;
   status: ContactStatus;
   isActive: boolean;
   sortOrder: number;
@@ -27,4 +28,6 @@ export class PublicContactResponseDto {
   position: string | null;
   department: string | null;
   description: string | null;
+  photoUrl: string | null;
+  status: ContactStatus;
 }

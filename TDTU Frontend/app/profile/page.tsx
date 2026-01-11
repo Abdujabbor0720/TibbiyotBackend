@@ -72,7 +72,7 @@ export default function ProfilePage() {
 
   return (
     <AppLayout title={t.profile.title}>
-      <div className="container max-w-lg mx-auto px-3 py-3 space-y-3">
+      <div className="container max-w-md mx-auto px-3 py-3 space-y-3">
         {/* Telegram User Card */}
         <Card className="bg-card/60 backdrop-blur-md border-border/30">
           <CardHeader className="pb-2 px-3 pt-3">

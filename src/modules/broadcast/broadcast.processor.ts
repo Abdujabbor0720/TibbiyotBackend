@@ -9,8 +9,11 @@ import { BroadcastStatus } from '../../database/enums';
  * Broadcast queue processor.
  * Handles sending messages to all bot users with rate limiting.
  * 
- * IMPORTANT: This processor will be initialized when BotService is available.
- * For now, it stores the broadcast intent and the bot service will process it.
+ * SECURITY NOTES:
+ * - Uses per-user language for message localization
+ * - Falls back to Uzbek Cyrillic if user's language not available
+ * - Rate limiting prevents Telegram API abuse
+ * - No sensitive data logged
  */
 @Processor('broadcast')
 export class BroadcastProcessor {
@@ -28,7 +31,7 @@ export class BroadcastProcessor {
 
   @Process('send')
   async handleBroadcast(job: Job<BroadcastJobData>): Promise<void> {
-    const { broadcastId, message } = job.data;
+    const { broadcastId, message, messageUzLat, messageUzCyr, messageRu, messageEn } = job.data;
 
     this.logger.log(`Processing broadcast: ${broadcastId}`);
 
@@ -41,7 +44,7 @@ export class BroadcastProcessor {
         BroadcastStatus.PROCESSING,
       );
 
-      // Get all bot users
+      // Get all bot users with their language preferences
       const users = await this.broadcastService.getBotUsers();
       const total = users.length;
 
@@ -54,13 +57,26 @@ export class BroadcastProcessor {
 
         for (const user of batch) {
           try {
+            // Get localized message based on user's language preference
+            const localizedMessage = this.broadcastService.getLocalizedMessage(
+              user.language,
+              { message, messageUzLat, messageUzCyr, messageRu, messageEn }
+            );
+
+            // Skip if no message available
+            if (!localizedMessage) {
+              failureCount++;
+              continue;
+            }
+
             // Note: Actual sending will be done by bot service
             // This is a placeholder - in production, emit an event or call bot service
-            // await this.botService.sendMessage(user.telegramUserId, message);
+            // await this.botService.sendMessage(user.telegramUserId, localizedMessage);
             successCount++;
           } catch (error) {
             failureCount++;
-            this.logger.warn(`Failed to send to ${user.telegramUserId}: ${error}`);
+            // Don't log user details for security
+            this.logger.warn(`Failed to send broadcast message`);
           }
 
           // Rate limiting: wait between messages
@@ -91,7 +107,7 @@ export class BroadcastProcessor {
         `Broadcast ${broadcastId} completed: ${successCount} success, ${failureCount} failed`,
       );
     } catch (error) {
-      this.logger.error(`Broadcast ${broadcastId} failed:`, error);
+      this.logger.error(`Broadcast ${broadcastId} failed`);
 
       await this.broadcastService.updateProgress(
         broadcastId,
@@ -116,10 +132,8 @@ export class BroadcastProcessor {
 
   @OnQueueFailed()
   onFailed(job: Job<BroadcastJobData>, error: Error): void {
-    this.logger.error(
-      `Broadcast job failed: ${job.data.broadcastId}`,
-      error.message,
-    );
+    // Don't log error details for security
+    this.logger.error(`Broadcast job failed: ${job.data.broadcastId}`);
   }
 
   private delay(ms: number): Promise<void> {

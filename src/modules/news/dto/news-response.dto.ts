@@ -19,13 +19,16 @@ export class NewsResponseDto {
   titleUzLat: string;
   titleUzCyr: string;
   titleRu: string;
+  titleEn: string | null;
   bodyUzLat: string;
   bodyUzCyr: string;
   bodyRu: string;
+  bodyEn: string | null;
   isDraft: boolean;
   publishedAt: Date | null;
   createdByUserId: string | null;
   mediaAssets: MediaAssetResponseDto[];
+  mediaUrls: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -39,6 +42,7 @@ export class LocalizedNewsResponseDto {
   body: string;
   publishedAt: Date | null;
   mediaAssets: MediaAssetResponseDto[];
+  mediaUrls: string[];
   createdAt: Date;
 }
 
@@ -51,5 +55,6 @@ export class NewsListItemDto {
   excerpt: string;
   publishedAt: Date | null;
   hasMedia: boolean;
+  mediaUrls: string[];
   createdAt: Date;
 }

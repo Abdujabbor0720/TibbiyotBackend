@@ -24,7 +24,7 @@ export function BottomNav() {
   }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/40 bg-background/85 backdrop-blur-2xl supports-[backdrop-filter]:bg-background/60 safe-area-bottom shadow-[0_-4px_20px_-4px_rgba(0,0,0,0.1)]">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/40 bg-background/90 backdrop-blur-xl safe-area-bottom">
       <div className="flex h-16 items-center justify-around px-2 gap-1">
         {navItems.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
@@ -36,37 +36,29 @@ export function BottomNav() {
               href={item.href}
               onClick={handleClick}
               className={cn(
-                "relative flex flex-col items-center justify-center gap-1 py-2 px-4 transition-all duration-300 rounded-2xl min-w-[60px]",
-                "active:scale-90 hover:bg-primary/5",
+                "relative flex flex-col items-center justify-center gap-1 py-2 px-3 transition-all duration-200 rounded-xl min-w-[56px]",
+                "active:scale-95",
                 isActive 
                   ? "text-primary" 
-                  : "text-muted-foreground hover:text-foreground",
+                  : "text-muted-foreground",
               )}
             >
-              {/* Glow effect for active item */}
-              {isActive && (
-                <div className="absolute inset-0 bg-primary/10 rounded-2xl blur-sm" />
-              )}
               <div
                 className={cn(
-                  "relative flex items-center justify-center rounded-xl p-2 transition-all duration-300",
+                  "flex items-center justify-center rounded-lg p-1.5 transition-all duration-200",
                   isActive 
-                    ? "bg-gradient-to-br from-primary/20 via-primary/15 to-primary/10 shadow-md ring-1 ring-primary/30" 
+                    ? "bg-primary/15" 
                     : "bg-transparent",
                 )}
               >
-                <Icon className={cn("h-5 w-5 transition-transform", isActive && "stroke-[2.5px] scale-110")} />
+                <Icon className={cn("h-5 w-5", isActive && "stroke-[2.5px]")} />
               </div>
               <span className={cn(
-                "text-[10px] font-medium transition-all duration-300", 
-                isActive && "font-bold text-primary"
+                "text-[10px] font-medium", 
+                isActive && "font-semibold"
               )}>
                 {item.label}
               </span>
-              {/* Active indicator dot */}
-              {isActive && (
-                <div className="absolute -bottom-0.5 w-1.5 h-1.5 rounded-full bg-primary shadow-sm shadow-primary/50" />
-              )}
             </Link>
           )
         })}

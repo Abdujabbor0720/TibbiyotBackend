@@ -1,10 +1,12 @@
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
   },
   images: {
     remotePatterns: [
@@ -15,19 +17,8 @@ const nextConfig = {
       },
     ],
   },
-  // Skip ngrok browser warning
-  async headers() {
-    return [
-      {
-        source: '/:path*',
-        headers: [
-          {
-            key: 'ngrok-skip-browser-warning',
-            value: 'true',
-          },
-        ],
-      },
-    ];
+  turbopack: {
+    root: __dirname,
   },
 }
 

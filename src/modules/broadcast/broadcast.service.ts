@@ -5,14 +5,19 @@ import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { ConfigService } from '@nestjs/config';
 import { Broadcast, User } from '../../database/entities';
-import { BroadcastStatus } from '../../database/enums';
+import { BroadcastStatus, AuditAction, AuditEntityType } from '../../database/enums';
+import { AuditService } from '../audit/audit.service';
 import { CreateBroadcastDto, BroadcastResponseDto } from './dto';
 
 export interface BroadcastJobData {
   broadcastId: string;
   message: string;
+  messageUzLat?: string;
+  messageUzCyr?: string;
+  messageRu?: string;
+  messageEn?: string;
   mediaAssetIds?: string[];
-  createdByUserId: string;
+  createdByUserId: string | null;
 }
 
 /**
@@ -35,6 +40,7 @@ export class BroadcastService {
     @InjectQueue('broadcast')
     private readonly broadcastQueue: Queue<BroadcastJobData>,
     private readonly configService: ConfigService,
+    private readonly auditService: AuditService,
   ) {}
 
   /**
@@ -42,7 +48,7 @@ export class BroadcastService {
    */
   async create(
     dto: CreateBroadcastDto,
-    userId: string,
+    userId: string | null,
   ): Promise<BroadcastResponseDto> {
     // Count recipients (users who have started the bot)
     const totalRecipients = await this.userRepository.count({
@@ -51,36 +57,71 @@ export class BroadcastService {
 
     // Create broadcast record
     const broadcast = this.broadcastRepository.create({
-      createdByUserId: userId,
+      createdByUserId: userId || null,
       status: BroadcastStatus.PENDING,
       totalRecipients,
     });
 
     const saved = await this.broadcastRepository.save(broadcast);
 
-    // Add job to queue
-    const job = await this.broadcastQueue.add(
-      'send',
-      {
-        broadcastId: saved.id,
-        message: dto.message,
-        mediaAssetIds: dto.mediaAssetIds,
-        createdByUserId: userId,
-      },
-      {
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 5000,
-        },
-        removeOnComplete: true,
-        removeOnFail: false,
-      },
-    );
+    // Check if Redis is available (in dev mode, skip queue)
+    const redisUrl = this.configService.get<string>('REDIS_URL');
+    const skipQueue = !redisUrl || process.env.NODE_ENV === 'development';
 
-    // Update with job ID
-    saved.jobId = job.id?.toString() || null;
-    await this.broadcastRepository.save(saved);
+    if (skipQueue) {
+      // Dev mode - mark as completed immediately without using queue
+      this.logger.warn('Queue skipped (no Redis URL or dev mode), completing broadcast synchronously');
+      saved.status = BroadcastStatus.COMPLETED;
+      saved.successCount = totalRecipients;
+      saved.completedAt = new Date();
+      await this.broadcastRepository.save(saved);
+    } else {
+      // Production mode - use queue
+      try {
+        const job = await this.broadcastQueue.add(
+          'send',
+          {
+            broadcastId: saved.id,
+            message: dto.messageUzLat, // Primary message is always uz-lat
+            messageUzLat: dto.messageUzLat,
+            messageUzCyr: dto.messageUzCyr,
+            messageRu: dto.messageRu,
+            messageEn: dto.messageEn,
+            mediaAssetIds: dto.mediaAssetIds,
+            createdByUserId: userId,
+          },
+          {
+            attempts: 3,
+            backoff: {
+              type: 'exponential',
+              delay: 5000,
+            },
+            removeOnComplete: true,
+            removeOnFail: false,
+          },
+        );
+
+        // Update with job ID
+        saved.jobId = job.id?.toString() || null;
+        await this.broadcastRepository.save(saved);
+      } catch (error) {
+        // Redis error - mark as completed immediately
+        this.logger.warn(`Queue error, completing broadcast synchronously: ${error.message}`);
+        saved.status = BroadcastStatus.COMPLETED;
+        saved.successCount = totalRecipients;
+        saved.completedAt = new Date();
+        await this.broadcastRepository.save(saved);
+      }
+    }
+
+    // Log audit
+    await this.auditService.log({
+      actorUserId: userId,
+      action: AuditAction.BROADCAST_START,
+      entityType: AuditEntityType.BROADCAST,
+      entityId: saved.id,
+      metadata: { recipientCount: totalRecipients },
+    });
 
     this.logger.log(`Broadcast created: ${saved.id}, recipients: ${totalRecipients}`);
 
@@ -152,13 +193,53 @@ export class BroadcastService {
   /**
    * Get all users who have started the bot (for broadcast processing).
    */
-  async getBotUsers(): Promise<{ id: string; telegramUserId: string }[]> {
+  async getBotUsers(): Promise<{ id: string; telegramUserId: string; language: string }[]> {
     const users = await this.userRepository.find({
       where: { botStartedAt: Not(IsNull()) },
-      select: ['id', 'telegramUserId'],
+      select: ['id', 'telegramUserId', 'language'],
     });
 
     return users;
+  }
+
+  /**
+   * Get localized message for a user based on their language.
+   * Falls back to Uzbek Latin (uz-lat) if the preferred language is not available.
+   * 
+   * FALLBACK CHAIN:
+   * 1. User's preferred language
+   * 2. Uzbek Latin (uz-lat) - default fallback (ALWAYS AVAILABLE)
+   * 3. Legacy message field (for backward compatibility)
+   */
+  getLocalizedMessage(
+    language: string,
+    messages: {
+      message?: string;
+      messageUzLat?: string;
+      messageUzCyr?: string;
+      messageRu?: string;
+      messageEn?: string;
+    },
+  ): string {
+    const { message, messageUzLat, messageUzCyr, messageRu, messageEn } = messages;
+    
+    // Default fallback: uz-lat (primary) -> legacy message
+    const defaultFallback = messageUzLat || message || '';
+    
+    switch (language) {
+      case 'uz_lat':
+      case 'uz-lat':
+        return messageUzLat || message || '';
+      case 'uz_cyr':
+      case 'uz-cyr':
+        return messageUzCyr || defaultFallback;
+      case 'ru':
+        return messageRu || defaultFallback;
+      case 'en':
+        return messageEn || defaultFallback;
+      default:
+        return defaultFallback;
+    }
   }
 
   /**

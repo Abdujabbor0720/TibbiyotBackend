@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
+import * as express from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -12,6 +13,11 @@ async function bootstrap() {
   });
 
   const configService = app.get(ConfigService);
+  const isProduction = configService.get('app.isProduction');
+
+  // Request body size limits (protection against large payloads)
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   
   // Security headers with Helmet
   app.use(helmet({
@@ -26,25 +32,35 @@ async function bootstrap() {
     crossOriginEmbedderPolicy: false, // Required for Telegram WebApp
   }));
 
-  // CORS configuration
+  // CORS configuration - stricter in production
   const corsOrigins = configService.get<string[]>('security.corsOrigins') || [];
-  app.enableCors({
-    origin: corsOrigins.length > 0 ? corsOrigins : true,
+  const corsConfig = {
+    origin: isProduction 
+      ? (corsOrigins.length > 0 ? corsOrigins : false) // Reject if no origins configured in production
+      : true, // Allow all in development
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Telegram-Init-Data'],
     credentials: true,
-  });
+    maxAge: 86400, // Cache preflight for 24 hours
+  };
+  
+  if (isProduction && corsOrigins.length === 0) {
+    logger.warn('⚠️ No CORS origins configured in production! API will reject cross-origin requests.');
+  }
+  
+  app.enableCors(corsConfig);
 
-  // Global validation pipe
+  // Global validation pipe with strict security
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,           // Strip unknown properties
-      forbidNonWhitelisted: true, // Throw on unknown properties
+      forbidNonWhitelisted: true, // Throw on unknown properties (prevents injection attacks)
       transform: true,           // Auto-transform types
       transformOptions: {
         enableImplicitConversion: true,
       },
-      disableErrorMessages: configService.get('app.isProduction'),
+      disableErrorMessages: isProduction, // Hide detailed errors in production
+      stopAtFirstError: true,    // Fail fast on validation errors
     }),
   );
 

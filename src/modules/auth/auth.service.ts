@@ -57,6 +57,8 @@ export class AuthService {
 
     const adminTelegramIds = this.configService.get<string[]>('telegram.adminTelegramIds') || [];
     const isAdmin = adminTelegramIds.includes(telegramUserId);
+    
+    this.logger.debug(`Auth check - telegramUserId: ${telegramUserId}, adminTelegramIds: [${adminTelegramIds.join(', ')}], isAdmin: ${isAdmin}`);
 
     if (!user) {
       // Create new user

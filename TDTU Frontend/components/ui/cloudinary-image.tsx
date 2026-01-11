@@ -1,6 +1,6 @@
 "use client";
 
-import Image from 'next/image';
+import { useState } from 'react';
 import { cn } from '@/lib/utils';
 
 // Cloudinary cloud name from environment variable only
@@ -64,17 +64,52 @@ export function CloudinaryImage({
   format = 'auto',
   priority = false,
 }: CloudinaryImageProps) {
-  // If it's a local URL, use next/image directly
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+
+  // If no src provided, show placeholder
+  if (!src) {
+    return (
+      <div 
+        className={cn('bg-muted flex items-center justify-center text-muted-foreground', className)}
+        style={{ width, height }}
+      >
+        <span className="text-xs">No image</span>
+      </div>
+    );
+  }
+
+  // If error loading image, show placeholder
+  if (hasError) {
+    return (
+      <div 
+        className={cn('bg-muted flex items-center justify-center text-muted-foreground', className)}
+        style={{ width, height }}
+      >
+        <span className="text-xs">Error</span>
+      </div>
+    );
+  }
+
+  // If it's a local URL, use img directly
   if (isLocalUrl(src)) {
     return (
-      <Image
-        src={src}
-        alt={alt}
-        width={width}
-        height={height}
-        className={cn('object-cover', className)}
-        priority={priority}
-      />
+      <div className="relative" style={{ width, height }}>
+        {isLoading && (
+          <div className={cn('absolute inset-0 bg-muted animate-pulse rounded', className)} />
+        )}
+        <img
+          src={src}
+          alt={alt}
+          width={width}
+          height={height}
+          className={cn('object-cover', isLoading ? 'opacity-0' : 'opacity-100', className)}
+          style={{ width, height }}
+          loading={priority ? 'eager' : 'lazy'}
+          onLoad={() => setIsLoading(false)}
+          onError={() => setHasError(true)}
+        />
+      </div>
     );
   }
 
@@ -82,15 +117,22 @@ export function CloudinaryImage({
   const imageUrl = buildCloudinaryUrl(src, { width, height, crop, quality, format });
 
   return (
-    <Image
-      src={imageUrl}
-      alt={alt}
-      width={width}
-      height={height}
-      className={cn('object-cover', className)}
-      priority={priority}
-      unoptimized
-    />
+    <div className="relative" style={{ width, height }}>
+      {isLoading && (
+        <div className={cn('absolute inset-0 bg-muted animate-pulse rounded', className)} />
+      )}
+      <img
+        src={imageUrl}
+        alt={alt}
+        width={width}
+        height={height}
+        className={cn('object-cover transition-opacity duration-300', isLoading ? 'opacity-0' : 'opacity-100', className)}
+        style={{ width, height }}
+        loading={priority ? 'eager' : 'lazy'}
+        onLoad={() => setIsLoading(false)}
+        onError={() => setHasError(true)}
+      />
+    </div>
   );
 }
 
@@ -107,15 +149,55 @@ export function CloudinaryAvatar({
   size = 40,
   className,
 }: CloudinaryAvatarProps) {
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+
+  // If no src provided or error loading, show placeholder with initial
+  if (!src || hasError) {
+    return (
+      <div 
+        className={cn(
+          'rounded-full bg-muted flex items-center justify-center text-muted-foreground font-medium flex-shrink-0',
+          className
+        )}
+        style={{ width: size, height: size }}
+      >
+        {alt ? alt.charAt(0).toUpperCase() : '?'}
+      </div>
+    );
+  }
+
+  // Build optimized Cloudinary URL for avatar
+  const imageUrl = src.startsWith('http') ? src : buildCloudinaryUrl(src, { 
+    width: size * 2, // 2x for retina
+    height: size * 2, 
+    crop: 'fill', 
+    quality: 'auto', 
+    format: 'auto' 
+  });
+
   return (
-    <CloudinaryImage
-      src={src}
-      alt={alt}
-      width={size}
-      height={size}
-      className={cn('rounded-full', className)}
-      crop="fill"
-    />
+    <div 
+      className={cn('rounded-full overflow-hidden flex-shrink-0 relative', className)}
+      style={{ width: size, height: size }}
+    >
+      {isLoading && (
+        <div className="absolute inset-0 bg-muted animate-pulse rounded-full" />
+      )}
+      <img
+        src={imageUrl}
+        alt={alt}
+        width={size}
+        height={size}
+        className={cn(
+          'rounded-full object-cover w-full h-full transition-opacity duration-300',
+          isLoading ? 'opacity-0' : 'opacity-100'
+        )}
+        loading="lazy"
+        onLoad={() => setIsLoading(false)}
+        onError={() => setHasError(true)}
+      />
+    </div>
   );
 }
 

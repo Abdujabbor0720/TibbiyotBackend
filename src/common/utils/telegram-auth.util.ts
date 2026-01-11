@@ -1,4 +1,4 @@
-import { createHmac } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 
 /**
  * Telegram WebApp initData verification utility.
@@ -10,7 +10,22 @@ import { createHmac } from 'crypto';
  * - Always verify initData before trusting any data from it
  * - Set maximum age to prevent replay attacks
  * - Never trust client-provided isAdmin; always verify server-side
+ * - Uses timing-safe comparison to prevent timing attacks
  */
+
+/**
+ * Timing-safe string comparison to prevent timing attacks.
+ */
+function timingSafeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  
+  return timingSafeEqual(bufA, bufB);
+}
 
 export interface TelegramWebAppUser {
   id: number;
@@ -95,8 +110,8 @@ export function verifyTelegramInitData(
       .update(checkString)
       .digest('hex');
 
-    // Compare hashes (timing-safe comparison would be better but hex comparison is reasonable)
-    if (calculatedHash !== receivedHash) {
+    // Timing-safe comparison to prevent timing attacks
+    if (!timingSafeCompare(calculatedHash, receivedHash)) {
       return null;
     }
 

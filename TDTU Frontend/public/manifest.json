@@ -1,7 +1,7 @@
 {
-  "name": "TDSU - Toshkent Davlat Stomatologiya Universiteti",
-  "short_name": "TDSU",
-  "description": "Toshkent Davlat Stomatologiya universiteti rasmiy Telegram mini ilovasi",
+  "name": "ToshTTU - Toshkent Davlat Tibbiyot Universiteti",
+  "short_name": "ToshTTU",
+  "description": "Toshkent Davlat Tibbiyot Universiteti rasmiy Telegram mini ilovasi",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
@@ -9,14 +9,9 @@
   "orientation": "portrait",
   "icons": [
     {
-      "src": "/images/image.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "/images/image.png",
-      "sizes": "512x512",
-      "type": "image/png"
+      "src": "/brand/tma-logo.jpg",
+      "sizes": "any",
+      "type": "image/jpeg"
     }
   ],
   "lang": "uz",

@@ -37,6 +37,12 @@ export class CreateNewsDto {
   @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
   titleRu: string;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  titleEn?: string;
+
   @IsString()
   @IsNotEmpty()
   @MinLength(10)
@@ -59,6 +65,12 @@ export class CreateNewsDto {
   bodyRu: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(50000)
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  bodyEn?: string;
+
+  @IsOptional()
   @IsBoolean()
   isDraft?: boolean;
 
@@ -70,4 +82,9 @@ export class CreateNewsDto {
   @IsArray()
   @IsUUID('4', { each: true })
   mediaAssetIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  mediaUrls?: string[];
 }

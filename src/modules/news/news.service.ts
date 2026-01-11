@@ -6,7 +6,8 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull, Not, LessThanOrEqual } from 'typeorm';
 import { NewsPost, MediaAsset } from '../../database/entities';
-import { MediaOwnerType, Language } from '../../database/enums';
+import { MediaOwnerType, Language, AuditAction, AuditEntityType } from '../../database/enums';
+import { AuditService } from '../audit/audit.service';
 import {
   CreateNewsDto,
   UpdateNewsDto,
@@ -27,23 +28,27 @@ export class NewsService {
     private readonly newsRepository: Repository<NewsPost>,
     @InjectRepository(MediaAsset)
     private readonly mediaRepository: Repository<MediaAsset>,
+    private readonly auditService: AuditService,
   ) {}
 
   /**
    * Create a new news post.
    * Admin only.
    */
-  async create(dto: CreateNewsDto, userId: string): Promise<NewsResponseDto> {
+  async create(dto: CreateNewsDto, userId: string | null): Promise<NewsResponseDto> {
     const news = this.newsRepository.create({
       titleUzLat: dto.titleUzLat,
       titleUzCyr: dto.titleUzCyr,
       titleRu: dto.titleRu,
+      titleEn: dto.titleEn || null,
       bodyUzLat: dto.bodyUzLat,
       bodyUzCyr: dto.bodyUzCyr,
       bodyRu: dto.bodyRu,
+      bodyEn: dto.bodyEn || null,
       isDraft: dto.isDraft ?? false,
       publishedAt: dto.publishedAt ? new Date(dto.publishedAt) : (dto.isDraft ? null : new Date()),
       createdByUserId: userId,
+      mediaUrls: dto.mediaUrls || [],
     });
 
     const saved = await this.newsRepository.save(news);
@@ -56,6 +61,15 @@ export class NewsService {
       );
     }
 
+    // Log audit - always log
+    await this.auditService.log({
+      actorUserId: userId || null,
+      action: AuditAction.NEWS_CREATE,
+      entityType: AuditEntityType.NEWS,
+      entityId: saved.id,
+      metadata: { title: saved.titleUzLat },
+    });
+
     this.logger.log(`Created news: ${saved.id}`);
     return this.findByIdAdmin(saved.id);
   }
@@ -64,7 +78,7 @@ export class NewsService {
    * Update a news post.
    * Admin only.
    */
-  async update(id: string, dto: UpdateNewsDto): Promise<NewsResponseDto> {
+  async update(id: string, dto: UpdateNewsDto, userId?: string): Promise<NewsResponseDto> {
     const news = await this.newsRepository.findOne({ where: { id } });
 
     if (!news) {
@@ -75,13 +89,16 @@ export class NewsService {
     if (dto.titleUzLat !== undefined) news.titleUzLat = dto.titleUzLat;
     if (dto.titleUzCyr !== undefined) news.titleUzCyr = dto.titleUzCyr;
     if (dto.titleRu !== undefined) news.titleRu = dto.titleRu;
+    if (dto.titleEn !== undefined) news.titleEn = dto.titleEn || null;
     if (dto.bodyUzLat !== undefined) news.bodyUzLat = dto.bodyUzLat;
     if (dto.bodyUzCyr !== undefined) news.bodyUzCyr = dto.bodyUzCyr;
     if (dto.bodyRu !== undefined) news.bodyRu = dto.bodyRu;
+    if (dto.bodyEn !== undefined) news.bodyEn = dto.bodyEn || null;
     if (dto.isDraft !== undefined) news.isDraft = dto.isDraft;
     if (dto.publishedAt !== undefined) {
       news.publishedAt = dto.publishedAt ? new Date(dto.publishedAt) : null;
     }
+    if (dto.mediaUrls !== undefined) news.mediaUrls = dto.mediaUrls;
 
     const updated = await this.newsRepository.save(news);
 
@@ -103,6 +120,16 @@ export class NewsService {
     }
 
     this.logger.log(`Updated news: ${id}`);
+    
+    // Log audit - always log
+    await this.auditService.log({
+      actorUserId: userId || null,
+      action: AuditAction.NEWS_UPDATE,
+      entityType: AuditEntityType.NEWS,
+      entityId: id,
+      metadata: { title: updated.titleUzLat },
+    });
+    
     return this.findByIdAdmin(updated.id);
   }
 
@@ -110,14 +137,25 @@ export class NewsService {
    * Delete a news post.
    * Admin only.
    */
-  async delete(id: string): Promise<void> {
+  async delete(id: string, userId?: string): Promise<void> {
     const news = await this.newsRepository.findOne({ where: { id } });
 
     if (!news) {
       throw new NotFoundException('News not found');
     }
 
+    const title = news.titleUzLat;
     await this.newsRepository.remove(news);
+    
+    // Log audit - always log
+    await this.auditService.log({
+      actorUserId: userId || null,
+      action: AuditAction.NEWS_DELETE,
+      entityType: AuditEntityType.NEWS,
+      entityId: id,
+      metadata: { title },
+    });
+    
     this.logger.log(`Deleted news: ${id}`);
   }
 
@@ -239,13 +277,16 @@ export class NewsService {
       titleUzLat: news.titleUzLat,
       titleUzCyr: news.titleUzCyr,
       titleRu: news.titleRu,
+      titleEn: news.titleEn,
       bodyUzLat: news.bodyUzLat,
       bodyUzCyr: news.bodyUzCyr,
       bodyRu: news.bodyRu,
+      bodyEn: news.bodyEn,
       isDraft: news.isDraft,
       publishedAt: news.publishedAt,
       createdByUserId: news.createdByUserId,
       mediaAssets: (news.mediaAssets || []).map(this.toMediaAssetDto),
+      mediaUrls: news.mediaUrls || [],
       createdAt: news.createdAt,
       updatedAt: news.updatedAt,
     };
@@ -261,6 +302,7 @@ export class NewsService {
       body: news.getLocalizedBody(language),
       publishedAt: news.publishedAt,
       mediaAssets: (news.mediaAssets || []).map(this.toMediaAssetDto),
+      mediaUrls: news.mediaUrls || [],
       createdAt: news.createdAt,
     };
   }
@@ -277,7 +319,8 @@ export class NewsService {
       title: news.getLocalizedTitle(language),
       excerpt,
       publishedAt: news.publishedAt,
-      hasMedia: (news.mediaAssets || []).length > 0,
+      hasMedia: (news.mediaAssets || []).length > 0 || (news.mediaUrls || []).length > 0,
+      mediaUrls: news.mediaUrls || [],
       createdAt: news.createdAt,
     };
   }

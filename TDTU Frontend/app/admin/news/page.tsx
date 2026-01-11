@@ -4,16 +4,13 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useApp } from "@/lib/store"
 import { AppLayout } from "@/components/layout/app-layout"
-import { CloudinaryImage, CloudinaryThumbnail } from "@/components/ui/cloudinary-image"
-import { ImageUploadButton } from "@/components/ui/file-upload"
+import { CloudinaryThumbnail } from "@/components/ui/cloudinary-image"
+import { MediaUpload } from "@/components/ui/media-upload"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Dialog,
   DialogContent,
@@ -33,56 +30,129 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { newsMock, type NewsItem } from "@/lib/mock-data"
-import { ArrowLeft, Plus, Pencil, Trash2, Newspaper, ImageIcon, Video, Music, FileText, Upload } from "lucide-react"
+import { newsApi } from "@/lib/api"
+import { ArrowLeft, Plus, Pencil, Trash2, Newspaper, FileText, Loader2 } from "lucide-react"
 import { format } from "date-fns"
 import { hapticFeedback } from "@/lib/telegram"
 
-const mediaIcons = {
-  photo: ImageIcon,
-  video: Video,
-  audio: Music,
-  text: FileText,
+// Helper to get auth token from localStorage
+const getAuthToken = (): string | null => {
+  if (typeof window === 'undefined') return null
+  return localStorage.getItem('auth_token')
+}
+
+// Helper to get localized text
+const getLocalizedText = (value: string | Record<string, string> | null | undefined, locale: string): string => {
+  if (!value) return ""
+  if (typeof value === "string") return value
+  return value[locale] || value["uz-lat"] || value["en"] || Object.values(value)[0] || ""
 }
 
 export default function AdminNewsPage() {
   const router = useRouter()
   const { isAdmin, t, locale } = useApp()
-  const [news, setNews] = useState<NewsItem[]>(newsMock)
+  const [news, setNews] = useState<any[]>([])
   const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [editingNews, setEditingNews] = useState<NewsItem | null>(null)
+  const [editingNews, setEditingNews] = useState<any | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
 
+  // Fetch news from backend (admin API for full data)
   useEffect(() => {
     if (!isAdmin) {
       router.replace("/home")
+      return
     }
+    
+    const token = getAuthToken()
+    if (!token) return
+    
+    setLoading(true)
+    newsApi.getAllAdmin(token)
+      .then((res) => {
+        if (res.success && res.data) {
+          const newsItems = Array.isArray(res.data) ? res.data : (res.data as any).items || []
+          setNews(newsItems)
+        }
+      })
+      .catch((err) => console.error("Failed to load news:", err))
+      .finally(() => setLoading(false))
   }, [isAdmin, router])
 
   if (!isAdmin) return null
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     hapticFeedback("warning")
-    setNews((prev) => prev.filter((n) => n.id !== id))
+    const token = getAuthToken()
+    if (!token) {
+      alert("Token topilmadi. Qayta login qiling.")
+      return
+    }
+    
+    const result = await newsApi.delete(token, id)
+    if (result.success) {
+      setNews((prev) => prev.filter((n) => n.id !== id))
+      hapticFeedback("success")
+    } else {
+      alert("O'chirishda xatolik: " + (result.error || "Noma'lum xatolik"))
+    }
   }
 
-  const handleSave = (newsItem: Partial<NewsItem>) => {
-    hapticFeedback("success")
-    if (editingNews) {
-      setNews((prev) => prev.map((n) => (n.id === editingNews.id ? { ...n, ...newsItem } : n)))
-    } else {
-      const newNewsItem: NewsItem = {
-        id: Date.now().toString(),
-        title: { "uz-lat": "", "uz-cyr": "", ru: "", en: "", ...newsItem.title },
-        excerpt: { "uz-lat": "", "uz-cyr": "", ru: "", en: "", ...newsItem.excerpt },
-        body: { "uz-lat": "", "uz-cyr": "", ru: "", en: "", ...newsItem.body },
-        mediaType: newsItem.mediaType || "text",
-        publishedAt: new Date().toISOString(),
-        createdBy: "admin",
+  const handleSave = async (newsItem: any) => {
+    const token = getAuthToken()
+    
+    setSaving(true)
+    try {
+      // Convert frontend format to backend DTO format
+      const backendData = {
+        titleUzLat: newsItem.titleUzLat || "",
+        titleUzCyr: newsItem.titleUzCyr || "",
+        titleRu: newsItem.titleRu || "",
+        titleEn: newsItem.titleEn || "",
+        bodyUzLat: newsItem.bodyUzLat || "",
+        bodyUzCyr: newsItem.bodyUzCyr || "",
+        bodyRu: newsItem.bodyRu || "",
+        bodyEn: newsItem.bodyEn || "",
+        mediaAssetIds: newsItem.mediaAssetIds,
+        mediaUrls: newsItem.mediaUrls,
       }
-      setNews((prev) => [newNewsItem, ...prev])
+      
+      if (editingNews) {
+        const result = await newsApi.update(token, editingNews.id, backendData)
+        if (result.success) {
+          // Refresh news list
+          const refreshed = await newsApi.getAllAdmin(token)
+          if (refreshed.success && refreshed.data) {
+            const newsItems = Array.isArray(refreshed.data) ? refreshed.data : (refreshed.data as any).items || []
+            setNews(newsItems)
+          }
+          setIsDialogOpen(false)
+          hapticFeedback("success")
+        } else {
+          alert("Yangilashda xatolik: " + (result.error || "Noma'lum xatolik"))
+        }
+      } else {
+        const result = await newsApi.create(token, backendData)
+        if (result.success) {
+          // Refresh news list
+          const refreshed = await newsApi.getAllAdmin(token)
+          if (refreshed.success && refreshed.data) {
+            const newsItems = Array.isArray(refreshed.data) ? refreshed.data : (refreshed.data as any).items || []
+            setNews(newsItems)
+          }
+          setIsDialogOpen(false)
+          hapticFeedback("success")
+        } else {
+          alert("Qo'shishda xatolik: " + (result.error || "Noma'lum xatolik"))
+        }
+      }
+    } catch (err) {
+      console.error("Save error:", err)
+      alert("Xatolik yuz berdi")
+    } finally {
+      setSaving(false)
+      setEditingNews(null)
     }
-    setIsDialogOpen(false)
-    setEditingNews(null)
   }
 
   const openEditDialog = (newsItem: NewsItem) => {
@@ -97,7 +167,7 @@ export default function AdminNewsPage() {
 
   return (
     <AppLayout title={t.admin.manageNews} showFooter={false}>
-      <div className="container max-w-lg mx-auto px-3 py-3 space-y-3">
+      <div className="container max-w-md mx-auto px-3 py-3 space-y-3">
         <Button
           variant="ghost"
           size="sm"
@@ -120,35 +190,35 @@ export default function AdminNewsPage() {
         </div>
 
         <div className="space-y-2">
-          {news.map((item) => {
-            const Icon = mediaIcons[item.mediaType]
+          {loading ? (
+            <div className="flex items-center justify-center py-10">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          ) : news.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <Newspaper className="h-10 w-10 text-muted-foreground/40 mb-3" />
+              <p className="text-xs text-muted-foreground">{t.news.noNews}</p>
+            </div>
+          ) : (
+          news.map((item) => {
+            // Get title based on locale - backend returns titleUzLat, titleUzCyr, titleRu
+            const titleText = locale === "ru" 
+              ? (item.titleRu || item.titleUzLat || item.title || "")
+              : locale === "uz-cyr"
+                ? (item.titleUzCyr || item.titleUzLat || item.title || "")
+                : (item.titleUzLat || item.title || "")
             return (
               <Card key={item.id} className="overflow-hidden card-animate">
                 <CardContent className="p-3">
                   <div className="flex gap-2.5">
-                    {item.mediaUrls?.[0] ? (
-                      <div className="relative h-14 w-14 rounded-lg overflow-hidden bg-muted shrink-0">
-                        <CloudinaryThumbnail
-                          src={item.mediaUrls[0]}
-                          alt={item.title[locale]}
-                          width={56}
-                          height={56}
-                        />
-                      </div>
-                    ) : (
-                      <div className="h-14 w-14 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                        <Icon className="h-5 w-5 text-muted-foreground" />
-                      </div>
-                    )}
+                    <div className="h-14 w-14 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                      <FileText className="h-5 w-5 text-muted-foreground" />
+                    </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-xs font-medium text-foreground line-clamp-2">{item.title[locale]}</h3>
+                      <h3 className="text-xs font-medium text-foreground line-clamp-2">{titleText}</h3>
                       <div className="flex items-center gap-1.5 mt-1">
-                        <Badge variant="outline" className="text-[10px] gap-0.5 h-4 px-1">
-                          <Icon className="h-2.5 w-2.5" />
-                          {t.news[item.mediaType]}
-                        </Badge>
                         <span className="text-[10px] text-muted-foreground">
-                          {format(new Date(item.publishedAt), "dd.MM.yyyy")}
+                          {item.publishedAt ? format(new Date(item.publishedAt), "dd.MM.yyyy") : format(new Date(item.createdAt), "dd.MM.yyyy")}
                         </span>
                       </div>
                     </div>
@@ -188,7 +258,8 @@ export default function AdminNewsPage() {
                 </CardContent>
               </Card>
             )
-          })}
+          })
+          )}
         </div>
 
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -216,52 +287,65 @@ function NewsFormDialog({
   t,
 }: {
   news: NewsItem | null
-  onSave: (news: Partial<NewsItem>) => void
+  onSave: (news: any) => void
   onClose: () => void
   locale: "uz-lat" | "uz-cyr" | "ru" | "en"
   t: ReturnType<typeof useApp>["t"]
 }) {
-  const [activeTab, setActiveTab] = useState<"uz-lat" | "uz-cyr" | "ru" | "en">("uz-lat")
-  const [mediaType, setMediaType] = useState<NewsItem["mediaType"]>(news?.mediaType || "text")
-  const [mediaUrls, setMediaUrls] = useState<string[]>(news?.mediaUrls || [])
-  const [titles, setTitles] = useState({
-    "uz-lat": news?.title["uz-lat"] || "",
-    "uz-cyr": news?.title["uz-cyr"] || "",
-    ru: news?.title["ru"] || "",
-    en: news?.title["en"] || "",
-  })
-  const [bodies, setBodies] = useState({
-    "uz-lat": news?.body["uz-lat"] || "",
-    "uz-cyr": news?.body["uz-cyr"] || "",
-    ru: news?.body["ru"] || "",
-    en: news?.body["en"] || "",
-  })
+  const [mediaFiles, setMediaFiles] = useState<Array<{id: string; url: string; publicId: string; type: string; name: string; size: number}>>([])
   
-  const handleMediaUpload = (url: string, publicId: string) => {
-    setMediaUrls(prev => [...prev, url])
+  // Get initial title and body from news item (check all language fields)
+  const getInitialTitle = (newsItem: NewsItem | null) => {
+    if (!newsItem) return ""
+    return newsItem.titleUzLat || newsItem.titleUzCyr || newsItem.titleRu || newsItem.titleEn || 
+           newsItem.title?.["uz-lat"] || newsItem.title?.["uz-cyr"] || newsItem.title?.["ru"] || newsItem.title?.["en"] || ""
   }
-
-  const handleRemoveMedia = (index: number) => {
-    setMediaUrls(prev => prev.filter((_, i) => i !== index))
+  
+  const getInitialBody = (newsItem: NewsItem | null) => {
+    if (!newsItem) return ""
+    return newsItem.bodyUzLat || newsItem.bodyUzCyr || newsItem.bodyRu || newsItem.bodyEn ||
+           newsItem.body?.["uz-lat"] || newsItem.body?.["uz-cyr"] || newsItem.body?.["ru"] || newsItem.body?.["en"] || ""
   }
+  
+  const [title, setTitle] = useState("")
+  const [body, setBody] = useState("")
+  
+  // Reset form when news prop changes
+  useEffect(() => {
+    setTitle(getInitialTitle(news))
+    setBody(getInitialBody(news))
+    // Convert existing mediaUrls to mediaFiles format
+    if (news?.mediaUrls && news.mediaUrls.length > 0) {
+      setMediaFiles(news.mediaUrls.map((url, index) => ({
+        id: `existing-${index}`,
+        url,
+        publicId: `existing-${index}`,
+        type: url.includes('/video/') ? 'video' : 'image',
+        name: url.split('/').pop() || 'file',
+        size: 0,
+      })))
+    } else {
+      setMediaFiles([])
+    }
+  }, [news])
 
   const handleSubmit = () => {
+    // Send same text to all language fields (admin writes in their preferred language)
     onSave({
-      title: titles,
-      excerpt: {
-        "uz-lat": bodies["uz-lat"].slice(0, 150),
-        "uz-cyr": bodies["uz-cyr"].slice(0, 150),
-        ru: bodies["ru"].slice(0, 150),
-        en: bodies["en"].slice(0, 150),
-      },
-      body: bodies,
-      mediaType,
-      mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
+      titleUzLat: title,
+      titleUzCyr: title,
+      titleRu: title,
+      titleEn: title,
+      bodyUzLat: body,
+      bodyUzCyr: body,
+      bodyRu: body,
+      bodyEn: body,
+      mediaUrls: mediaFiles.map(f => f.url),
     })
   }
 
   return (
-    <DialogContent className="max-w-[90vw] sm:max-w-sm max-h-[85vh] overflow-y-auto">
+    <DialogContent className="max-w-[90vw] sm:max-w-md max-h-[85vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="text-sm">{news ? t.admin.editNews : t.admin.addNews}</DialogTitle>
         <DialogDescription className="text-xs">
@@ -274,99 +358,54 @@ function NewsFormDialog({
       </DialogHeader>
 
       <div className="space-y-3 py-3">
+        {/* Title */}
         <div className="space-y-1.5">
-          <Label className="text-xs">{t.admin.mediaType}</Label>
-          <Select value={mediaType} onValueChange={(v) => setMediaType(v as NewsItem["mediaType"])}>
-            <SelectTrigger className="h-9 text-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="photo">{t.news.photo}</SelectItem>
-              <SelectItem value="video">{t.news.video}</SelectItem>
-              <SelectItem value="audio">{t.news.audio}</SelectItem>
-              <SelectItem value="text">{t.news.text}</SelectItem>
-            </SelectContent>
-          </Select>
+          <Label className="text-xs">{t.admin.newsTitle}</Label>
+          <Input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder={
+              locale === "ru" ? "Заголовок новости" : locale === "uz-cyr" ? "Янгилик сарлавҳаси" : locale === "en" ? "News title" : "Yangilik sarlavhasi"
+            }
+            className="h-9 text-sm"
+          />
         </div>
-
-        {mediaType !== "text" && (
-          <div className="space-y-3">
-            <ImageUploadButton 
-              onUpload={handleMediaUpload}
-              className="w-full h-auto py-4 border-2 border-dashed flex-col gap-2"
-            >
-              <Upload className="h-6 w-6 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">{t.admin.uploadMedia}</span>
-            </ImageUploadButton>
-            
-            {mediaUrls.length > 0 && (
-              <div className="grid grid-cols-3 gap-2">
-                {mediaUrls.map((url, index) => (
-                  <div key={index} className="relative group">
-                    <CloudinaryThumbnail
-                      src={url}
-                      alt={`Media ${index + 1}`}
-                      width={80}
-                      height={80}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveMedia(index)}
-                      className="absolute -top-1 -right-1 h-5 w-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="uz-lat" className="text-[10px] px-1">
-              O&apos;zb
-            </TabsTrigger>
-            <TabsTrigger value="uz-cyr" className="text-[10px] px-1">
-              Ўзб
-            </TabsTrigger>
-            <TabsTrigger value="ru" className="text-[10px] px-1">
-              Рус
-            </TabsTrigger>
-            <TabsTrigger value="en" className="text-[10px] px-1">
-              Eng
-            </TabsTrigger>
-          </TabsList>
-
-          {(["uz-lat", "uz-cyr", "ru", "en"] as const).map((lang) => (
-            <TabsContent key={lang} value={lang} className="space-y-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs">{t.admin.newsTitle}</Label>
-                <Input
-                  value={titles[lang]}
-                  onChange={(e) => setTitles((prev) => ({ ...prev, [lang]: e.target.value }))}
-                  placeholder={
-                    lang === "ru" ? "Заголовок новости" : lang === "en" ? "News title" : "Yangilik sarlavhasi"
-                  }
-                  className="h-9 text-sm"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">{t.admin.newsBody}</Label>
-                <Textarea
-                  value={bodies[lang]}
-                  onChange={(e) => setBodies((prev) => ({ ...prev, [lang]: e.target.value }))}
-                  placeholder={
-                    lang === "ru" ? "Текст новости..." : lang === "en" ? "News body..." : "Yangilik matni..."
-                  }
-                  rows={5}
-                  className="text-sm"
-                />
-              </div>
-            </TabsContent>
-          ))}
-        </Tabs>
+        
+        {/* Body */}
+        <div className="space-y-1.5">
+          <Label className="text-xs">{t.admin.newsBody}</Label>
+          <Textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            placeholder={
+              locale === "ru" ? "Текст новости..." : locale === "uz-cyr" ? "Янгилик матни..." : locale === "en" ? "News content..." : "Yangilik matni..."
+            }
+            rows={4}
+            className="text-sm"
+          />
+        </div>
+        
+        {/* Media Upload */}
+        <div className="space-y-1.5">
+          <Label className="text-xs">
+            {locale === "ru" ? "Медиа файлы" : locale === "en" ? "Media files" : "Media fayllar"}
+          </Label>
+          <p className="text-[10px] text-muted-foreground">
+            {locale === "ru" 
+              ? "Добавьте фото, видео или документы к новости" 
+              : locale === "en" 
+                ? "Add photos, videos or documents to the news" 
+                : "Yangilikka rasm, video yoki hujjatlar qo'shing"}
+          </p>
+          <MediaUpload
+            value={mediaFiles}
+            onChange={setMediaFiles}
+            accept="all"
+            multiple={true}
+            maxFiles={10}
+            maxSize={50}
+          />
+        </div>
       </div>
 
       <DialogFooter>
@@ -375,7 +414,7 @@ function NewsFormDialog({
         </Button>
         <Button
           onClick={handleSubmit}
-          disabled={!titles["uz-lat"] && !titles["uz-cyr"] && !titles["ru"] && !titles["en"]}
+          disabled={!title || !body}
           className="h-8 text-xs btn-animate"
         >
           {t.common.save}

@@ -10,7 +10,7 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
   title: "TDSU - Telegram WebApp",
-  description: "Toshkent Davlat Stomatologiya universiteti rasmiy Telegram mini ilovasi",
+  description: "Toshkent Davlat Tibbiyot Universiteti rasmiy Telegram mini ilovasi",
   generator: "v0.app",
   manifest: "/manifest.json",
   icons: {

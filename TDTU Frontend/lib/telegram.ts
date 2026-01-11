@@ -132,13 +132,51 @@ export function hapticFeedback(
   type: "light" | "medium" | "heavy" | "success" | "error" | "warning" | "selection",
 ): void {
   const webApp = getTelegramWebApp()
-  if (webApp?.HapticFeedback) {
-    if (type === "selection") {
-      webApp.HapticFeedback.selectionChanged()
-    } else if (type === "success" || type === "error" || type === "warning") {
-      webApp.HapticFeedback.notificationOccurred(type)
-    } else {
-      webApp.HapticFeedback.impactOccurred(type)
+  // HapticFeedback requires version 6.1+
+  if (webApp?.HapticFeedback && webApp.version && parseFloat(webApp.version) >= 6.1) {
+    try {
+      if (type === "selection") {
+        webApp.HapticFeedback.selectionChanged()
+      } else if (type === "success" || type === "error" || type === "warning") {
+        webApp.HapticFeedback.notificationOccurred(type)
+      } else {
+        webApp.HapticFeedback.impactOccurred(type)
+      }
+    } catch (e) {
+      // Silently ignore if HapticFeedback is not supported
+      console.debug("HapticFeedback not supported:", e)
     }
+  }
+}
+
+/**
+ * Share content via Telegram inline mode
+ * Opens chat selector to share to users, groups, or channels
+ */
+export function shareToTelegram(text: string, chooseChatTypes?: ('users' | 'groups' | 'channels' | 'bots')[]): boolean {
+  const webApp = getTelegramWebApp() as any
+  if (webApp?.switchInlineQuery) {
+    try {
+      webApp.switchInlineQuery(text, chooseChatTypes || ['users', 'groups', 'channels'])
+      return true
+    } catch (e) {
+      console.debug("switchInlineQuery not supported:", e)
+      return false
+    }
+  }
+  return false
+}
+
+/**
+ * Open share URL in Telegram
+ * Fallback method that works in all environments
+ */
+export function openTelegramShare(url: string, text: string): void {
+  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`
+  const webApp = getTelegramWebApp()
+  if (webApp?.openTelegramLink) {
+    webApp.openTelegramLink(shareUrl)
+  } else {
+    window.open(shareUrl, '_blank')
   }
 }
